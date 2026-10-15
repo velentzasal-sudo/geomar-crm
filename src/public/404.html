@@ -1,0 +1,12 @@
+<!DOCTYPE html>
+<html>
+<head>
+<script>
+  var l = window.location;
+  l.replace(l.protocol + '//' + l.hostname + (l.port ? ':' + l.port : '') +
+    '/geomar-crm/' + '?p=/' + l.pathname.slice(1).split('/').slice(1).join('/').replace(/&/g, '~and~') +
+    (l.search ? '&q=' + l.search.slice(1).replace(/&/g, '~and~') : '') + l.hash);
+</script>
+</head>
+<body></body>
+</html>
