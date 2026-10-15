@@ -32,7 +32,7 @@ export default function App() {
   if (!session) return <Login />
 
   return (
-    <BrowserRouter basename="/geomar-reminders/logismart">
+   <BrowserRouter basename="/geomar-crm">
       <Routes>
         <Route element={<Layout user={session.user} />}>
           <Route index element={<Dashboard />} />
