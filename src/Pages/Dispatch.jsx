@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
+import { format } from 'date-fns'
+import { el } from 'date-fns/locale'
 
 const TLDM = 13.20
 const LDM_FACTORS = { E: 0.40, B: 0.50, P: 0.60, M: 1.00 }
@@ -14,20 +16,22 @@ const STATUS_COLORS = {
 export default function Dispatch() {
   const [orders, setOrders] = useState([])
   const [trucks, setTrucks] = useState([])
+  const [firms, setFirms] = useState([])
   const [loading, setLoading] = useState(true)
-  const [selectedTruck, setSelectedTruck] = useState(null)
   const [assigningOrder, setAssigningOrder] = useState(null)
 
   useEffect(() => { loadAll() }, [])
 
   async function loadAll() {
     setLoading(true)
-    const [{ data: ord }, { data: tr }] = await Promise.all([
+    const [{ data: ord }, { data: tr }, { data: fr }] = await Promise.all([
       supabase.from('orders').select('*').not('status', 'eq', 'Delivered').order('created_at', { ascending: false }),
       supabase.from('trucks').select('*').order('tr'),
+      supabase.from('firms').select('*'),
     ])
     setOrders(ord || [])
     setTrucks(tr || [])
+    setFirms(fr || [])
     setLoading(false)
   }
 
@@ -54,10 +58,52 @@ export default function Dispatch() {
     loadAll()
   }
 
-  // Unassigned orders
+  function getFirm(clientName) {
+    if (!clientName) return null
+    return firms.find(f => f.name?.toLowerCase() === clientName?.toLowerCase()) || null
+  }
+
+  function openWhatsApp(order, truck) {
+    const firm = getFirm(order.client)
+    const phone = truck?.phone?.replace(/\D/g, '') || ''
+
+    const addr = firm
+      ? [firm.street, firm.num].filter(Boolean).join(' ')
+      : ''
+    const city = firm?.city || ''
+    const country = firm?.country || ''
+    const mapsQuery = [addr, city, country].filter(Boolean).join(', ')
+    const mapsUrl = mapsQuery ? `https://maps.google.com/?q=${encodeURIComponent(mapsQuery)}` : ''
+
+    const rdy = order.rdy ? format(new Date(order.rdy), 'd MMM yyyy', { locale: el }) : '—'
+
+    const msg = [
+      '📦 *Ανάθεση Φορτίου*',
+      '',
+      '🏭 *Φίρμα:* ' + (order.client || '—'),
+      addr ? '🏠 *Οδός:* ' + addr : null,
+      city ? '🏙 *Πόλη:* ' + city : null,
+      country ? '🌍 *Χώρα:* ' + country : null,
+      mapsUrl ? '📍 *Maps:* ' + mapsUrl : null,
+      '',
+      '📋 *Φορτίο*',
+      '📬 *Παραλήπτης:* ' + (order.to || '—'),
+      '📅 *Ετοιμότητα:* ' + rdy,
+      '🔢 *Παλέτες:* ' + (order.qty || '—') + ' ' + (order.pal || ''),
+      '📐 *LDM:* ' + (parseFloat(order.ldm) || 0).toFixed(2),
+      order.weight ? '⚖️ *Βάρος:* ' + order.weight + ' kg' : null,
+      order.temp ? '🌡 *Θερμοκρασία:* ' + order.temp + '°C' : null,
+    ].filter(line => line !== null).join('\n')
+
+    const url = phone
+      ? `https://wa.me/${phone}?text=${encodeURIComponent(msg)}`
+      : `https://wa.me/?text=${encodeURIComponent(msg)}`
+
+    window.open(url, '_blank')
+  }
+
   const unassigned = orders.filter(o => !o.truck || o.status === 'Open')
 
-  // Orders per truck
   const truckOrders = {}
   trucks.forEach(t => {
     truckOrders[t.tr] = orders.filter(o => o.truck === t.tr)
@@ -135,7 +181,7 @@ export default function Dispatch() {
               <div className="flex items-center justify-between mb-3">
                 <div>
                   <h3 className="text-white font-bold text-lg">🚚 {t.tr}</h3>
-                  <p className="text-slate-400 text-xs">{t.driver}</p>
+                  <p className="text-slate-400 text-xs">{t.driver}{t.phone ? ` · 📞 ${t.phone}` : ''}</p>
                 </div>
                 <div className="text-right">
                   <p className={`text-sm font-bold ${over ? 'text-red-400' : 'text-green-400'}`}>
@@ -169,6 +215,11 @@ export default function Dispatch() {
                         <p className="text-white text-xs font-medium truncate">{o.client}</p>
                         <p className="text-slate-400 text-xs">{o.from} → {o.to} · {parseFloat(o.ldm).toFixed(2)} LDM</p>
                       </div>
+                      <button
+                        onClick={() => openWhatsApp(o, t)}
+                        className="text-green-400 hover:text-green-300 text-sm shrink-0"
+                        title="WhatsApp"
+                      >📲</button>
                       <button
                         onClick={() => unassignOrder(o.id)}
                         className="text-slate-500 hover:text-red-400 text-xs shrink-0"
