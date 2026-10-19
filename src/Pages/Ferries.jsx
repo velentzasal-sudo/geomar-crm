@@ -21,6 +21,7 @@ const ROUTES = [
   'Μπάρι → Ηγουμενίτσα',
   'Ανκόνα → Ηγουμενίτσα',
   'Βενετία → Ηγουμενίτσα',
+  '__other__',
 ]
 
 // €/μέτρο ανά δρομολόγιο και ημέρα (0=Δευτέρα ... 6=Κυριακή)
@@ -90,9 +91,13 @@ export default function Ferries() {
   // Σύνολο κόστους μήνα
   const monthStart = startOfMonth(current)
   const monthEnd   = endOfMonth(current)
-  const monthTotal = bookings
-    .filter(b => b.departure >= format(monthStart, 'yyyy-MM-dd') && b.departure <= format(monthEnd, 'yyyy-MM-dd'))
-    .reduce((sum, b) => sum + (parseFloat(b.total_cost) || 0), 0)
+  const monthDs    = format(monthStart, 'yyyy-MM-dd')
+  const monthDe    = format(monthEnd, 'yyyy-MM-dd')
+  const monthBookings = bookings.filter(b => b.departure >= monthDs && b.departure <= monthDe)
+  const monthTotal = monthBookings.reduce((sum, b) => sum + (parseFloat(b.total_cost) || 0), 0)
+  const companyTotals = Object.fromEntries(
+    COMPANIES.map(c => [c, monthBookings.filter(b => b.company === c).reduce((s, b) => s + (parseFloat(b.total_cost)||0), 0)])
+  )
 
   // Ημέρες ημερολογίου
   const calStart = startOfWeek(monthStart, { weekStartsOn: 1 })
@@ -199,22 +204,22 @@ export default function Ferries() {
         </div>
       </div>
 
-      {/* Σύνολο μήνα */}
-      <div className="bg-slate-800 border border-slate-700 rounded-2xl px-5 py-3 flex items-center justify-between">
-        <div>
-          <p className="text-slate-400 text-xs font-medium uppercase tracking-wide">Σύνολο {format(current, 'MMMM', { locale: el })}</p>
-          <p className="text-white text-2xl font-bold mt-0.5">{monthTotal.toLocaleString('el-GR', { minimumFractionDigits: 2 })} €</p>
+      {/* Σύνολα μήνα */}
+      <div className="grid grid-cols-3 gap-3">
+        <div className="bg-blue-900/30 border border-blue-700/50 rounded-2xl px-4 py-3">
+          <p className="text-blue-300 text-xs font-medium uppercase tracking-wide mb-1">Hellenic</p>
+          <p className="text-white text-xl font-bold">{companyTotals['Hellenic Ferry Services'].toLocaleString('el-GR', { minimumFractionDigits: 2 })} €</p>
+          <p className="text-blue-400 text-xs mt-0.5">{monthBookings.filter(b => b.company === 'Hellenic Ferry Services').length} κρατήσεις</p>
         </div>
-        <div className="text-right">
-          <p className="text-slate-400 text-xs">{bookings.filter(b => b.departure >= format(monthStart,'yyyy-MM-dd') && b.departure <= format(monthEnd,'yyyy-MM-dd')).length} κρατήσεις</p>
-          {COMPANIES.map(c => {
-            const total = bookings
-              .filter(b => b.company === c && b.departure >= format(monthStart,'yyyy-MM-dd') && b.departure <= format(monthEnd,'yyyy-MM-dd'))
-              .reduce((s, b) => s + (parseFloat(b.total_cost)||0), 0)
-            return total > 0 ? (
-              <p key={c} className="text-slate-500 text-xs">{c}: {total.toLocaleString('el-GR',{minimumFractionDigits:2})} €</p>
-            ) : null
-          })}
+        <div className="bg-cyan-900/30 border border-cyan-700/50 rounded-2xl px-4 py-3">
+          <p className="text-cyan-300 text-xs font-medium uppercase tracking-wide mb-1">Blue Star</p>
+          <p className="text-white text-xl font-bold">{companyTotals['Blue Star'].toLocaleString('el-GR', { minimumFractionDigits: 2 })} €</p>
+          <p className="text-cyan-400 text-xs mt-0.5">{monthBookings.filter(b => b.company === 'Blue Star').length} κρατήσεις</p>
+        </div>
+        <div className="bg-slate-800 border border-slate-600 rounded-2xl px-4 py-3">
+          <p className="text-slate-400 text-xs font-medium uppercase tracking-wide mb-1">Σύνολο {format(current, 'MMM', { locale: el })}</p>
+          <p className="text-green-400 text-xl font-bold">{monthTotal.toLocaleString('el-GR', { minimumFractionDigits: 2 })} €</p>
+          <p className="text-slate-500 text-xs mt-0.5">{monthBookings.length} κρατήσεις</p>
         </div>
       </div>
 
@@ -350,11 +355,24 @@ export default function Ferries() {
               {/* Δρομολόγιο */}
               <div>
                 <label className="block text-xs text-slate-400 mb-1">Δρομολόγιο *</label>
-                <select name="route" value={form.route} onChange={handleChange}
+                <select
+                  value={ROUTES.includes(form.route) ? form.route : (form.route ? '__other__' : '')}
+                  onChange={e => {
+                    if (e.target.value === '__other__') setForm(f => ({ ...f, route: '' }))
+                    else handleChange({ target: { name: 'route', value: e.target.value } })
+                  }}
                   className="w-full bg-slate-700 border border-slate-600 rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500">
                   <option value="">— Επιλογή —</option>
-                  {ROUTES.map(r => <option key={r} value={r}>{r}</option>)}
+                  {ROUTES.filter(r => r !== '__other__').map(r => <option key={r} value={r}>{r}</option>)}
+                  <option value="__other__">✏️ Άλλο δρομολόγιο...</option>
                 </select>
+                {!ROUTES.filter(r => r !== '__other__').includes(form.route) && (
+                  <input
+                    name="route" value={form.route} onChange={handleChange}
+                    placeholder="π.χ. Πειραιάς → Χανιά"
+                    className="w-full mt-2 bg-slate-700 border border-blue-500 rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-400"
+                  />
+                )}
               </div>
 
               {/* Φορτηγό */}
