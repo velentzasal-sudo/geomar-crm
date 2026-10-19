@@ -411,22 +411,6 @@ export default function Orders() {
         <div className="ml-auto text-slate-400 text-sm">{filtered.length} παραγγελίες</div>
       </div>
 
-      {filtered.length > 0 && (
-        <div className="bg-slate-800 rounded-2xl p-4 border border-slate-700">
-          <div className="flex justify-between text-sm mb-2">
-            <span className="text-slate-400">Σύνολο LDM</span>
-            <span className={totalLdm > TLDM ? 'text-red-400 font-bold' : 'text-green-400 font-bold'}>
-              {totalLdm.toFixed(2)} / {TLDM} LDM {totalLdm > TLDM ? '⚠️ ΥΠΕΡΒΑΣΗ' : ''}
-            </span>
-          </div>
-          <div className="w-full bg-slate-700 rounded-full h-2">
-            <div
-              className={`h-2 rounded-full transition-all ${ldmPct >= 100 ? 'bg-red-500' : ldmPct >= 80 ? 'bg-orange-500' : 'bg-green-500'}`}
-              style={{ width: `${Math.min(100, ldmPct)}%` }}
-            />
-          </div>
-        </div>
-      )}
 
       {loading ? (
         <p className="text-slate-400">Φόρτωση...</p>
