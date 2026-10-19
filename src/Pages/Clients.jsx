@@ -321,6 +321,7 @@ export default function Clients() {
                     )}
                   </div>
                   <p className="text-slate-400 text-xs truncate">{c.afm ? `ΑΦΜ: ${c.afm}` : ''} {c.city ? `· ${c.city}` : ''}</p>
+                  {c.notes && <p className="text-slate-500 text-xs truncate mt-0.5">📝 {c.notes}</p>}
                 </button>
 
                 {debt > 0 && (
