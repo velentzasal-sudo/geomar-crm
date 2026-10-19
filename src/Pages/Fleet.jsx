@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { format, parseISO, startOfWeek, endOfWeek, isThisWeek } from 'date-fns'
 import { el } from 'date-fns/locale'
@@ -68,6 +69,7 @@ export default function Fleet() {
   const [form, setForm]         = useState(EMPTY_TRUCK)
   const [saving, setSaving]     = useState(false)
   const [search, setSearch]     = useState('')
+  const [searchParams, setSearchParams] = useSearchParams()
 
   // Accordion: which truck cards are expanded
   const [expanded, setExpanded] = useState({})
@@ -89,10 +91,26 @@ export default function Fleet() {
         .select('id,client,from,to,status,rdy,load_date,delivery_date,truck,ldm,qty,pal,notes')
         .order('load_date', { ascending: false }),
     ])
-    setTrucks(t || [])
+    const trucks = t || []
+    setTrucks(trucks)
     setAvail(a || [])
     setAllOrders(o || [])
     setLoading(false)
+
+    // Deep-link: ?truck=ΑΒ-1234 → expand that card
+    const truckParam = searchParams.get('truck')
+    if (truckParam) {
+      const target = trucks.find(tr => tr.tr === truckParam)
+      if (target) {
+        setExpanded(e => ({ ...e, [target.id]: true }))
+        setSearchParams({})
+        // scroll to it after render
+        setTimeout(() => {
+          const el = document.getElementById(`truck-${target.id}`)
+          if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+        }, 100)
+      }
+    }
   }
 
   function toggleExpand(id) {
@@ -204,7 +222,7 @@ export default function Fleet() {
             const isOpen = !!expanded[t.id]
 
             return (
-              <div key={t.id} className="bg-slate-800 border border-slate-700 rounded-2xl overflow-hidden">
+              <div key={t.id} id={`truck-${t.id}`} className="bg-slate-800 border border-slate-700 rounded-2xl overflow-hidden">
                 {/* ── Collapsed header — always visible ── */}
                 <button
                   className="w-full flex items-center gap-3 px-4 py-3 hover:bg-slate-700/50 transition-colors text-left"
