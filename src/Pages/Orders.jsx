@@ -96,11 +96,9 @@ const EMPTY = {
 
 function validate(form) {
   const errors = {}
-  if (!form.client?.trim())       errors.client = 'Υποχρεωτικό'
-  if (!form.truck?.trim())        errors.truck  = 'Υποχρεωτικό'
-  if (!form.load_date)            errors.load_date = 'Υποχρεωτικό'
-  if (!form.delivery_date)        errors.delivery_date = 'Υποχρεωτικό'
-  if (!form.ldm && !form.qty)     errors.ldm = 'Βάλε LDM ή τεμάχια'
+  if (!form.client?.trim())   errors.client = 'Υποχρεωτικό'
+  if (!form.load_date)        errors.load_date = 'Υποχρεωτικό'
+  if (!form.ldm && !form.qty) errors.ldm = 'Βάλε LDM ή τεμάχια'
   return errors
 }
 
@@ -532,18 +530,17 @@ export default function Orders() {
                 <Field label="Θερμοκρασία" name="tmp" value={form.tmp} onChange={handleChange} />
                 <Field label="Έτοιμο" name="rdy" type="date" value={form.rdy} onChange={handleChange} />
                 <Field label="Ημ. Φόρτωσης *" name="load_date" type="date" value={form.load_date} onChange={handleChange} error={errors.load_date} />
-                <Field label="Ημ. Παράδοσης *" name="delivery_date" type="date" value={form.delivery_date} onChange={handleChange} error={errors.delivery_date} />
+                <Field label="Ημ. Παράδοσης" name="delivery_date" type="date" value={form.delivery_date} onChange={handleChange} />
                 <Field label="Τιμή (€)" name="price" type="number" value={form.price} onChange={handleChange} />
 
                 {/* Φορτηγό — searchable */}
                 <div>
                   <SearchableSelect
-                    label={errors.truck ? `🚚 Φορτηγό · ${errors.truck}` : '🚚 Φορτηγό *'}
+                    label="🚚 Φορτηγό"
                     value={form.truck}
                     onChange={handleSelectTruck}
                     options={trucks.map(t => t.tr + (t.driver ? ' · ' + t.driver : ''))}
                     placeholder="Επιλογή φορτηγού..."
-                    error={!!errors.truck}
                   />
                   {form.truck && (() => {
                     const trName = form.truck.split(' · ')[0]
