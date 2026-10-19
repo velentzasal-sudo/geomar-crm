@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 
 const STATUSES = ['Open', 'Ανατεθειμένη', 'Μεταφορά', 'Παράδοση', 'Delivered']
@@ -22,6 +22,8 @@ const EMPTY = {
 
 export default function Orders() {
   const [orders, setOrders] = useState([])
+  const [firms, setFirms] = useState([])
+  const [clients, setClients] = useState([])
   const [loading, setLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
   const [editing, setEditing] = useState(null)
@@ -31,7 +33,17 @@ export default function Orders() {
   const [saving, setSaving] = useState(false)
   const [showDelivered, setShowDelivered] = useState(false)
 
+  useEffect(() => { loadAll() }, [])
   useEffect(() => { loadOrders() }, [showDelivered])
+
+  async function loadAll() {
+    const [{ data: f }, { data: c }] = await Promise.all([
+      supabase.from('firms').select('id,name,street,num,city,country').order('name'),
+      supabase.from('clients').select('id,name,city,address').order('name'),
+    ])
+    setFirms(f || [])
+    setClients(c || [])
+  }
 
   async function loadOrders() {
     setLoading(true)
@@ -67,6 +79,23 @@ export default function Orders() {
       const next = { ...f, [name]: value }
       if (name === 'qty' || name === 'pal') {
         next.ldm = calcLdm(next.pal, next.qty)
+      }
+      // Αυτόματη συμπλήρωση διεύθυνσης φίρμας
+      if (name === 'firm') {
+        const firm = firms.find(f => f.name === value)
+        if (firm) {
+          const addr = [firm.street, firm.num].filter(Boolean).join(' ')
+          const full = [addr, firm.city, firm.country].filter(Boolean).join(', ')
+          next.from = full
+        }
+      }
+      // Αυτόματη συμπλήρωση διεύθυνσης παραλήπτη
+      if (name === 'client') {
+        const client = clients.find(c => c.name === value)
+        if (client) {
+          const addr = [client.address, client.city].filter(Boolean).join(', ')
+          next.to = addr
+        }
       }
       return next
     })
@@ -110,7 +139,6 @@ export default function Orders() {
 
   return (
     <div className="p-6 space-y-4">
-      {/* Header */}
       <div className="flex items-center justify-between">
         <h1 className="text-3xl font-bold text-white">📦 Παραγγελίες</h1>
         <button onClick={openNew} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl font-medium text-sm">
@@ -118,7 +146,6 @@ export default function Orders() {
         </button>
       </div>
 
-      {/* Filters */}
       <div className="flex flex-wrap gap-3 items-center">
         <input
           value={search}
@@ -141,7 +168,6 @@ export default function Orders() {
         <div className="ml-auto text-slate-400 text-sm">{filtered.length} παραγγελίες</div>
       </div>
 
-      {/* LDM bar */}
       {filtered.length > 0 && (
         <div className="bg-slate-800 rounded-2xl p-4 border border-slate-700">
           <div className="flex justify-between text-sm mb-2">
@@ -159,7 +185,6 @@ export default function Orders() {
         </div>
       )}
 
-      {/* Table */}
       {loading ? (
         <p className="text-slate-400">Φόρτωση...</p>
       ) : filtered.length === 0 ? (
@@ -170,7 +195,6 @@ export default function Orders() {
             const ldm = parseFloat(o.ldm) || 0
             return (
               <div key={o.id} className="bg-slate-800 border border-slate-700 rounded-2xl px-4 py-3 flex items-center gap-3">
-                {/* Status badge — click to cycle */}
                 <button
                   onClick={() => cycleStatus(o)}
                   className={`text-xs px-2 py-1 rounded-lg border shrink-0 transition-opacity hover:opacity-70 ${STATUS_COLORS[o.status] || 'bg-slate-700 text-slate-300 border-slate-600'}`}
@@ -178,25 +202,17 @@ export default function Orders() {
                 >
                   {o.status}
                 </button>
-
-                {/* Main info */}
                 <div className="flex-1 min-w-0">
                   <p className="text-white font-medium text-sm truncate">{o.client}</p>
                   <p className="text-slate-400 text-xs">{o.firm} · {o.from} → {o.to}</p>
                 </div>
-
-                {/* LDM / qty */}
                 <div className="text-right shrink-0">
                   <p className="text-slate-300 text-sm">{o.qty} {o.pal} · <span className={ldm > TLDM ? 'text-red-400' : 'text-slate-300'}>{ldm.toFixed(2)} LDM</span></p>
                   <p className="text-slate-500 text-xs">{o.rdy} {o.truck ? `· 🚚 ${o.truck}` : ''}</p>
                 </div>
-
-                {/* Price */}
                 {o.price > 0 && (
                   <div className="text-green-400 text-sm font-medium shrink-0">€{o.price}</div>
                 )}
-
-                {/* Actions */}
                 <div className="flex gap-1 shrink-0">
                   <button onClick={() => openEdit(o)} className="p-1.5 rounded-lg hover:bg-slate-700 text-slate-400 hover:text-white text-sm">✏️</button>
                   <button onClick={() => handleDelete(o.id)} className="p-1.5 rounded-lg hover:bg-red-900/40 text-slate-400 hover:text-red-400 text-sm">🗑️</button>
@@ -207,7 +223,6 @@ export default function Orders() {
         </div>
       )}
 
-      {/* Modal */}
       {showModal && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
           <div className="bg-slate-800 rounded-3xl border border-slate-700 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
@@ -215,11 +230,42 @@ export default function Orders() {
               <h2 className="text-xl font-bold text-white mb-6">{editing ? '✏️ Επεξεργασία' : '➕ Νέα Παραγγελία'}</h2>
 
               <div className="grid grid-cols-2 gap-4">
-                <Field label="Πελάτης" name="client" value={form.client} onChange={handleChange} className="col-span-2" />
-                <Field label="Φίρμα" name="firm" value={form.firm} onChange={handleChange} />
+
+                {/* Πελάτης dropdown */}
+                <div className="col-span-2">
+                  <label className="block text-xs text-slate-400 mb-1">Πελάτης</label>
+                  <select name="client" value={form.client} onChange={handleChange}
+                    className="w-full bg-slate-700 border border-slate-600 rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500">
+                    <option value="">— Επιλογή —</option>
+                    {clients.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
+                  </select>
+                </div>
+
+                {/* Φίρμα dropdown */}
+                <div>
+                  <label className="block text-xs text-slate-400 mb-1">Φίρμα (αποστολή)</label>
+                  <select name="firm" value={form.firm} onChange={handleChange}
+                    className="w-full bg-slate-700 border border-slate-600 rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500">
+                    <option value="">— Επιλογή —</option>
+                    {firms.map(f => <option key={f.id} value={f.name}>{f.name}</option>)}
+                  </select>
+                </div>
+
                 <Field label="Παραλήπτης" name="recip" value={form.recip} onChange={handleChange} />
-                <Field label="Από" name="from" value={form.from} onChange={handleChange} />
-                <Field label="Προς" name="to" value={form.to} onChange={handleChange} />
+
+                {/* Από — αυτόματο από φίρμα */}
+                <div>
+                  <label className="block text-xs text-slate-400 mb-1">Από (διεύθυνση)</label>
+                  <input name="from" value={form.from} onChange={handleChange}
+                    className="w-full bg-slate-700 border border-slate-600 rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500" />
+                </div>
+
+                {/* Προς — αυτόματο από πελάτη */}
+                <div>
+                  <label className="block text-xs text-slate-400 mb-1">Προς (διεύθυνση)</label>
+                  <input name="to" value={form.to} onChange={handleChange}
+                    className="w-full bg-slate-700 border border-slate-600 rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500" />
+                </div>
 
                 <div>
                   <label className="block text-xs text-slate-400 mb-1">Τύπος</label>
@@ -228,11 +274,12 @@ export default function Orders() {
                     {PAL_TYPES.map(p => <option key={p} value={p}>{p === 'E' ? 'EPAL' : p === 'B' ? 'Βιομ.' : p === 'P' ? 'Μισή' : p === 'M' ? 'Μέτρο' : 'Χύμα'}</option>)}
                   </select>
                 </div>
+
                 <Field label="Τεμάχια" name="qty" type="number" value={form.qty} onChange={handleChange} />
                 <Field label="LDM" name="ldm" type="number" value={form.ldm} onChange={handleChange} />
                 <Field label="Βάρος (kg)" name="wgt" type="number" value={form.wgt} onChange={handleChange} />
                 <Field label="Θερμοκρασία" name="tmp" value={form.tmp} onChange={handleChange} />
-                <Field label="Έτοιμο" name="rdy" value={form.rdy} onChange={handleChange} />
+                <Field label="Έτοιμο" name="rdy" type="date" value={form.rdy} onChange={handleChange} />
                 <Field label="Τιμή (€)" name="price" type="number" value={form.price} onChange={handleChange} />
                 <Field label="Φορτηγό" name="truck" value={form.truck} onChange={handleChange} />
 
@@ -251,7 +298,6 @@ export default function Orders() {
                 </div>
               </div>
 
-              {/* LDM preview */}
               {form.ldm && (
                 <div className={`mt-3 px-4 py-2 rounded-xl text-sm ${parseFloat(form.ldm) > TLDM ? 'bg-red-900/30 text-red-300' : 'bg-slate-700 text-slate-300'}`}>
                   LDM: {parseFloat(form.ldm).toFixed(2)} / {TLDM} {parseFloat(form.ldm) > TLDM ? '⚠️ Υπέρβαση!' : '✓'}
