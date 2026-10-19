@@ -5,7 +5,7 @@ import { format } from 'date-fns'
 import { el } from 'date-fns/locale'
 
 // Searchable dropdown component
-function SearchableSelect({ label, value, onChange, options, placeholder = '— Αναζήτηση —' }) {
+function SearchableSelect({ label, value, onChange, options, placeholder = '— Αναζήτηση —', error = false }) {
   const [query, setQuery] = useState('')
   const [open, setOpen] = useState(false)
   const ref = useRef(null)
@@ -39,7 +39,7 @@ function SearchableSelect({ label, value, onChange, options, placeholder = '— 
 
   return (
     <div ref={ref} className="relative">
-      {label && <label className="block text-xs text-slate-400 mb-1">{label}</label>}
+      {label && <label className={`block text-xs mb-1 ${error ? 'text-red-400' : 'text-slate-400'}`}>{label}</label>}
       <div className="relative">
         <input
           type="text"
@@ -47,7 +47,7 @@ function SearchableSelect({ label, value, onChange, options, placeholder = '— 
           onChange={e => { setQuery(e.target.value); setOpen(true) }}
           onFocus={() => setOpen(true)}
           placeholder={placeholder}
-          className="w-full bg-slate-700 border border-slate-600 rounded-xl px-3 py-2 pr-8 text-white text-sm focus:outline-none focus:border-blue-500"
+          className={`w-full bg-slate-700 border rounded-xl px-3 py-2 pr-8 text-white text-sm focus:outline-none focus:border-blue-500 ${error ? 'border-red-500' : 'border-slate-600'}`}
         />
         {query && (
           <button
@@ -91,7 +91,17 @@ const STATUS_COLORS = {
 const EMPTY = {
   client:'', firm:'', from:'', to:'', recip:'',
   pal:'E', qty:'', ldm:'', wgt:'', tmp:'',
-  rdy:'', price:'', notes:'', status:'Open', truck:'',
+  rdy:'', load_date:'', delivery_date:'', price:'', notes:'', status:'Open', truck:'',
+}
+
+function validate(form) {
+  const errors = {}
+  if (!form.client?.trim())       errors.client = 'Υποχρεωτικό'
+  if (!form.truck?.trim())        errors.truck  = 'Υποχρεωτικό'
+  if (!form.load_date)            errors.load_date = 'Υποχρεωτικό'
+  if (!form.delivery_date)        errors.delivery_date = 'Υποχρεωτικό'
+  if (!form.ldm && !form.qty)     errors.ldm = 'Βάλε LDM ή τεμάχια'
+  return errors
 }
 
 export default function Orders() {
@@ -109,6 +119,7 @@ export default function Orders() {
   const [saving, setSaving] = useState(false)
   const [showDelivered, setShowDelivered] = useState(false)
   const [showDispatch, setShowDispatch] = useState(false)
+  const [errors, setErrors] = useState({})
 
   useEffect(() => { loadAll() }, [])
   useEffect(() => { loadOrders() }, [showDelivered])
@@ -154,12 +165,14 @@ export default function Orders() {
   function openNew() {
     setEditing(null)
     setForm(EMPTY)
+    setErrors({})
     setShowModal(true)
   }
 
   function openEdit(o) {
     setEditing(o.id)
     setForm({ ...o })
+    setErrors({})
     setShowModal(true)
   }
 
@@ -201,6 +214,9 @@ export default function Orders() {
   }
 
   async function handleSave() {
+    const errs = validate(form)
+    if (Object.keys(errs).length > 0) { setErrors(errs); return }
+    setErrors({})
     setSaving(true)
     const { id: _id, ...rest } = form
     const payload = { ...rest, qty: parseFloat(form.qty)||0, ldm: parseFloat(form.ldm)||0, wgt: parseFloat(form.wgt)||0, price: parseFloat(form.price)||0 }
@@ -435,7 +451,11 @@ export default function Orders() {
                 </div>
                 <div className="text-right shrink-0">
                   <p className="text-slate-300 text-sm">{o.qty} {o.pal} · <span className={ldm > TLDM ? 'text-red-400' : 'text-slate-300'}>{ldm.toFixed(2)} LDM</span></p>
-                  <p className="text-slate-500 text-xs">{o.rdy} {o.truck ? `· 🚚 ${o.truck}` : ''}</p>
+                  <p className="text-slate-500 text-xs">
+                    {o.load_date ? `📦 ${o.load_date.substring(0,10)}` : o.rdy ? `🗓 ${o.rdy.substring(0,10)}` : ''}
+                    {o.delivery_date ? ` → 🏁 ${o.delivery_date.substring(0,10)}` : ''}
+                    {o.truck ? ` · 🚚 ${o.truck}` : ''}
+                  </p>
                 </div>
                 {o.price > 0 && (
                   <div className="text-green-400 text-sm font-medium shrink-0">€{o.price}</div>
@@ -464,11 +484,12 @@ export default function Orders() {
                 {/* Πελάτης */}
                 <div className="col-span-2">
                   <SearchableSelect
-                    label="Πελάτης"
+                    label={errors.client ? `Πελάτης · ${errors.client}` : 'Πελάτης *'}
                     value={form.client}
                     onChange={handleSelectClient}
                     options={clients.map(c => c.name)}
                     placeholder="Αναζήτηση πελάτη..."
+                    error={!!errors.client}
                   />
                 </div>
 
@@ -505,21 +526,24 @@ export default function Orders() {
                   </select>
                 </div>
 
-                <Field label="Τεμάχια" name="qty" type="number" value={form.qty} onChange={handleChange} />
-                <Field label="LDM" name="ldm" type="number" value={form.ldm} onChange={handleChange} />
+                <Field label="Τεμάχια" name="qty" type="number" value={form.qty} onChange={handleChange} error={errors.ldm || ''} />
+                <Field label="LDM" name="ldm" type="number" value={form.ldm} onChange={handleChange} error={errors.ldm ? '↑ ή τεμάχια' : ''} />
                 <Field label="Βάρος (kg)" name="wgt" type="number" value={form.wgt} onChange={handleChange} />
                 <Field label="Θερμοκρασία" name="tmp" value={form.tmp} onChange={handleChange} />
                 <Field label="Έτοιμο" name="rdy" type="date" value={form.rdy} onChange={handleChange} />
+                <Field label="Ημ. Φόρτωσης *" name="load_date" type="date" value={form.load_date} onChange={handleChange} error={errors.load_date} />
+                <Field label="Ημ. Παράδοσης *" name="delivery_date" type="date" value={form.delivery_date} onChange={handleChange} error={errors.delivery_date} />
                 <Field label="Τιμή (€)" name="price" type="number" value={form.price} onChange={handleChange} />
 
                 {/* Φορτηγό — searchable */}
                 <div>
                   <SearchableSelect
-                    label="🚚 Φορτηγό"
+                    label={errors.truck ? `🚚 Φορτηγό · ${errors.truck}` : '🚚 Φορτηγό *'}
                     value={form.truck}
                     onChange={handleSelectTruck}
                     options={trucks.map(t => t.tr + (t.driver ? ' · ' + t.driver : ''))}
                     placeholder="Επιλογή φορτηγού..."
+                    error={!!errors.truck}
                   />
                   {form.truck && (() => {
                     const trName = form.truck.split(' · ')[0]
@@ -573,16 +597,19 @@ export default function Orders() {
   )
 }
 
-function Field({ label, name, value, onChange, type = 'text', className = '' }) {
+function Field({ label, name, value, onChange, type = 'text', className = '', error = '' }) {
   return (
     <div className={className}>
-      <label className="block text-xs text-slate-400 mb-1">{label}</label>
+      <label className="block text-xs mb-1 flex items-center gap-1">
+        <span className={error ? 'text-red-400' : 'text-slate-400'}>{label}</span>
+        {error && <span className="text-red-400 text-xs">· {error}</span>}
+      </label>
       <input
         type={type}
         name={name}
         value={value ?? ''}
         onChange={onChange}
-        className="w-full bg-slate-700 border border-slate-600 rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500"
+        className={`w-full bg-slate-700 border rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500 ${error ? 'border-red-500' : 'border-slate-600'}`}
       />
     </div>
   )
