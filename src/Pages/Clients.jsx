@@ -103,23 +103,43 @@ export default function Clients() {
       const unmatched = []
 
       rows.forEach(row => {
-        // Normalize: find columns flexibly
-        const name = (row['Επωνυμία'] || row['ΕΠΩΝΥΜΙΑ'] || row['name'] || '').toString().trim()
-        const afm  = (row['Α.Φ.Μ.'] || row['ΑΦΜ'] || row['afm'] || row['Α.Φ.Μ'] || '').toString().trim()
-        const debt = parseFloat((row['Υπόλοιπο'] || row['ΥΠΟΛΟΙΠΟ'] || row['debt'] || 0).toString().replace(',', '.')) || 0
-        const notes = (row['Παρατηρήσεις'] || row['ΠΑΡΑΤΗΡΗΣΕΙΣ'] || row['notes'] || '').toString().trim()
+        // Find columns flexibly — look through all keys
+        const keys = Object.keys(row)
+        const findVal = (...candidates) => {
+          for (const key of keys) {
+            const k = key.trim().toLowerCase().replace(/\./g, '')
+            for (const c of candidates) {
+              if (k === c.toLowerCase().replace(/\./g, '')) return row[key]
+            }
+          }
+          return ''
+        }
+
+        const name  = (findVal('Επωνυμία','ΕΠΩΝΥΜΙΑ','name') || '').toString().trim()
+        const afmRaw = (findVal('ΑΦΜ','Α.Φ.Μ.','Α.Φ.Μ','afm') || '').toString().trim()
+        // Normalize AFM: keep only digits
+        const afm = afmRaw.replace(/\D/g, '')
+        const debt  = parseFloat((findVal('Υπόλοιπο','ΥΠΟΛΟΙΠΟ','debt') || 0).toString().replace(',', '.')) || 0
+        const notes = (findVal('Παρατηρήσεις','ΠΑΡΑΤΗΡΗΣΕΙΣ','notes') || '').toString().trim()
 
         if (!name && !afm) return
 
-        // Match: first by AFM, then by name
+        // Match: first by AFM (digits only), then by name
         let found = null
-        if (afm) found = clients.find(c => c.afm?.toString().trim() === afm)
-        if (!found && name) found = clients.find(c => c.name?.trim().toLowerCase() === name.toLowerCase())
+        if (afm) found = clients.find(c => c.afm?.toString().replace(/\D/g, '') === afm)
+        if (!found && name) found = clients.find(c =>
+          c.name?.trim().toLowerCase() === name.toLowerCase()
+        )
+        // Fuzzy: try partial match if still not found
+        if (!found && name.length > 5) found = clients.find(c =>
+          c.name?.trim().toLowerCase().includes(name.toLowerCase().slice(0, 10)) ||
+          name.toLowerCase().includes(c.name?.trim().toLowerCase().slice(0, 10) || '')
+        )
 
         if (found) {
           matched.push({ client: found, newDebt: debt, newNotes: notes, name, afm })
         } else {
-          unmatched.push({ name, afm, debt })
+          unmatched.push({ name, afm: afmRaw, debt })
         }
       })
 
