@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
-import { format, parseISO, startOfWeek, endOfWeek } from 'date-fns'
+import { format, parseISO, startOfWeek, endOfWeek, isThisWeek } from 'date-fns'
 import { el } from 'date-fns/locale'
 
 const EMPTY_TRUCK = { tr: '', driver: '', phone: '', tare: '', payload: '', ldm: '', tmp: '', notes: '' }
@@ -25,44 +25,58 @@ function fmtDate(d) {
   catch { return d }
 }
 
-// Group orders by ISO week (Mon–Sun)
 function groupByWeek(orders) {
   const groups = {}
   orders.forEach(o => {
     const ref = o.load_date || o.rdy || o.delivery_date
-    if (!ref) { (groups['—'] = groups['—'] || []).push(o); return }
+    if (!ref) {
+      const key = '0000-00-00'
+      if (!groups[key]) groups[key] = { label: 'Χωρίς ημερομηνία', orders: [], thisWeek: false }
+      groups[key].orders.push(o)
+      return
+    }
     try {
-      const d = parseISO(ref.substring(0, 10))
+      const d   = parseISO(ref.substring(0, 10))
       const mon = startOfWeek(d, { weekStartsOn: 1 })
-      const sun = endOfWeek(d, { weekStartsOn: 1 })
+      const sun = endOfWeek(d,   { weekStartsOn: 1 })
       const key = format(mon, 'yyyy-MM-dd')
-      const label = `${format(mon, 'd MMM', { locale: el })} – ${format(sun, 'd MMM yyyy', { locale: el })}`
-      if (!groups[key]) groups[key] = { label, orders: [] }
+      const thisWeek = isThisWeek(d, { weekStartsOn: 1 })
+      if (!groups[key]) groups[key] = {
+        label: `${format(mon, 'd MMM', { locale: el })} – ${format(sun, 'd MMM yyyy', { locale: el })}`,
+        orders: [],
+        thisWeek,
+      }
       groups[key].orders.push(o)
     } catch {
-      (groups['—'] = groups['—'] || []).push(o)
+      const key = '0000-00-00'
+      if (!groups[key]) groups[key] = { label: 'Χωρίς ημερομηνία', orders: [], thisWeek: false }
+      groups[key].orders.push(o)
     }
   })
-  // sort descending by week key
   return Object.entries(groups)
     .sort(([a], [b]) => b.localeCompare(a))
-    .map(([, v]) => v)
+    .map(([key, v]) => ({ ...v, key }))
 }
 
 export default function Fleet() {
-  const [trucks, setTrucks]   = useState([])
-  const [avail, setAvail]     = useState([])
+  const [trucks, setTrucks]     = useState([])
+  const [avail, setAvail]       = useState([])
   const [allOrders, setAllOrders] = useState([])
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading]   = useState(true)
   const [showModal, setShowModal] = useState(false)
-  const [editing, setEditing] = useState(null)
-  const [form, setForm]       = useState(EMPTY_TRUCK)
-  const [saving, setSaving]   = useState(false)
-  const [search, setSearch]   = useState('')
+  const [editing, setEditing]   = useState(null)
+  const [form, setForm]         = useState(EMPTY_TRUCK)
+  const [saving, setSaving]     = useState(false)
+  const [search, setSearch]     = useState('')
+
+  // Accordion: which truck cards are expanded
+  const [expanded, setExpanded] = useState({})
   // History drawer
-  const [historyTruck, setHistoryTruck] = useState(null) // truck object
+  const [historyTruck, setHistoryTruck]   = useState(null)
   const [historySearch, setHistorySearch] = useState('')
   const [historyStatus, setHistoryStatus] = useState('all')
+  // Which weeks are open in history
+  const [openWeeks, setOpenWeeks] = useState({})
 
   useEffect(() => { loadAll() }, [])
 
@@ -79,6 +93,27 @@ export default function Fleet() {
     setAvail(a || [])
     setAllOrders(o || [])
     setLoading(false)
+  }
+
+  function toggleExpand(id) {
+    setExpanded(e => ({ ...e, [id]: !e[id] }))
+  }
+
+  function toggleWeek(key) {
+    setOpenWeeks(w => ({ ...w, [key]: !w[key] }))
+  }
+
+  function openHistory(truck) {
+    setHistoryTruck(truck)
+    setHistorySearch('')
+    setHistoryStatus('all')
+    // auto-open current week
+    const weeks = groupByWeek(allOrders.filter(o => o.truck === truck.tr))
+    const initial = {}
+    weeks.forEach(w => { if (w.thisWeek) initial[w.key] = true })
+    // if none is current week, open the first (most recent)
+    if (Object.keys(initial).length === 0 && weeks.length > 0) initial[weeks[0].key] = true
+    setOpenWeeks(initial)
   }
 
   function openNew()   { setEditing(null); setForm(EMPTY_TRUCK); setShowModal(true) }
@@ -121,24 +156,24 @@ export default function Fleet() {
   const availMap = {}
   avail.forEach(a => { if (!availMap[a.tr]) availMap[a.tr] = a })
 
-  // History panel derived data
-  const truckOrders = historyTruck
-    ? allOrders.filter(o => {
-        const matchTruck  = o.truck === historyTruck.tr
-        const matchSearch = !historySearch ||
-          o.client?.toLowerCase().includes(historySearch.toLowerCase()) ||
-          o.from?.toLowerCase().includes(historySearch.toLowerCase()) ||
-          o.to?.toLowerCase().includes(historySearch.toLowerCase())
-        const matchStatus = historyStatus === 'all' || o.status === historyStatus
-        return matchTruck && matchSearch && matchStatus
-      })
+  // History derived
+  const rawTruckOrders = historyTruck
+    ? allOrders.filter(o => o.truck === historyTruck.tr)
     : []
 
-  const weeks = groupByWeek(truckOrders)
+  const filteredTruckOrders = rawTruckOrders.filter(o => {
+    const matchSearch = !historySearch ||
+      o.client?.toLowerCase().includes(historySearch.toLowerCase()) ||
+      o.from?.toLowerCase().includes(historySearch.toLowerCase()) ||
+      o.to?.toLowerCase().includes(historySearch.toLowerCase())
+    const matchStatus = historyStatus === 'all' || o.status === historyStatus
+    return matchSearch && matchStatus
+  })
 
-  const totalOrders    = historyTruck ? allOrders.filter(o => o.truck === historyTruck.tr).length : 0
-  const deliveredCount = historyTruck ? allOrders.filter(o => o.truck === historyTruck.tr && o.status === 'Delivered').length : 0
-  const activeCount    = historyTruck ? allOrders.filter(o => o.truck === historyTruck.tr && o.status !== 'Delivered').length : 0
+  const weeks = groupByWeek(filteredTruckOrders)
+  const totalOrders    = rawTruckOrders.length
+  const deliveredCount = rawTruckOrders.filter(o => o.status === 'Delivered').length
+  const activeCount    = rawTruckOrders.filter(o => o.status !== 'Delivered').length
 
   return (
     <div className="p-4 md:p-6 space-y-4">
@@ -162,57 +197,86 @@ export default function Fleet() {
       {loading ? (
         <p className="text-slate-400">Φόρτωση...</p>
       ) : (
-        <div className="grid grid-cols-1 gap-3">
+        <div className="space-y-2">
           {filtered.map(t => {
             const av = availMap[t.tr]
             const orderCount = allOrders.filter(o => o.truck === t.tr).length
+            const isOpen = !!expanded[t.id]
+
             return (
-              <div key={t.id} className="bg-slate-800 border border-slate-700 rounded-2xl p-4">
-                <div className="flex items-start justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="text-3xl">🚚</div>
-                    <div>
-                      <p className="text-white font-bold text-lg">{t.tr}</p>
-                      <p className="text-slate-400 text-sm">{t.driver} {t.phone ? `· 📞 ${t.phone}` : ''}</p>
+              <div key={t.id} className="bg-slate-800 border border-slate-700 rounded-2xl overflow-hidden">
+                {/* ── Collapsed header — always visible ── */}
+                <button
+                  className="w-full flex items-center gap-3 px-4 py-3 hover:bg-slate-700/50 transition-colors text-left"
+                  onClick={() => toggleExpand(t.id)}
+                >
+                  <span className="text-xl">🚚</span>
+                  <div className="flex-1 min-w-0">
+                    <span className="text-white font-bold">{t.tr}</span>
+                    <span className="text-slate-400 text-sm ml-2">{t.driver || '—'}</span>
+                    {orderCount > 0 && (
+                      <span className="ml-2 text-xs text-slate-500">{orderCount} παρ.</span>
+                    )}
+                  </div>
+                  {av?.nt && (
+                    <span className="text-xs text-green-400 shrink-0 hidden sm:inline">{av.nt}</span>
+                  )}
+                  <span className="text-slate-500 text-sm ml-1">{isOpen ? '▲' : '▼'}</span>
+                </button>
+
+                {/* ── Expanded body ── */}
+                {isOpen && (
+                  <div className="px-4 pb-4 space-y-3 border-t border-slate-700/50">
+                    {/* Actions */}
+                    <div className="flex gap-2 pt-3">
+                      <button
+                        onClick={() => openHistory(t)}
+                        className="px-3 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-300 hover:text-white text-xs font-medium transition-colors"
+                      >
+                        📋 Ιστορικό {orderCount > 0 && <span className="ml-1 text-slate-500">({orderCount})</span>}
+                      </button>
+                      <button onClick={() => openEdit(t)}
+                        className="px-3 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-300 hover:text-white text-xs transition-colors">
+                        ✏️ Επεξεργασία
+                      </button>
+                      <button onClick={() => handleDelete(t.id)}
+                        className="px-3 py-1.5 rounded-lg hover:bg-red-900/40 text-slate-500 hover:text-red-400 text-xs transition-colors ml-auto">
+                        🗑️ Διαγραφή
+                      </button>
                     </div>
-                  </div>
-                  <div className="flex gap-1 items-center">
-                    <button
-                      onClick={() => { setHistoryTruck(t); setHistorySearch(''); setHistoryStatus('all') }}
-                      className="px-3 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-300 hover:text-white text-xs font-medium transition-colors"
-                    >
-                      📋 Ιστορικό {orderCount > 0 && <span className="ml-1 text-slate-500">({orderCount})</span>}
-                    </button>
-                    <button onClick={() => openEdit(t)} className="p-1.5 rounded-lg hover:bg-slate-700 text-slate-400 hover:text-white text-sm">✏️</button>
-                    <button onClick={() => handleDelete(t.id)} className="p-1.5 rounded-lg hover:bg-red-900/40 text-slate-400 hover:text-red-400 text-sm">🗑️</button>
-                  </div>
-                </div>
 
-                <div className="grid grid-cols-3 gap-3 mt-3">
-                  <div className="bg-slate-700 rounded-xl p-3 text-center">
-                    <p className="text-slate-400 text-xs">Χωρητικότητα</p>
-                    <p className="text-white font-bold">{t.ldm} LDM</p>
-                  </div>
-                  <div className="bg-slate-700 rounded-xl p-3 text-center">
-                    <p className="text-slate-400 text-xs">Φορτίο</p>
-                    <p className="text-white font-bold">{t.payload ? `${t.payload} kg` : '—'}</p>
-                  </div>
-                  <div className="bg-slate-700 rounded-xl p-3 text-center">
-                    <p className="text-slate-400 text-xs">Θερμ/σία</p>
-                    <p className="text-white font-bold">{t.tmp || '—'}</p>
-                  </div>
-                </div>
+                    {/* Info grid */}
+                    <div className="grid grid-cols-3 gap-2">
+                      <div className="bg-slate-700 rounded-xl p-3 text-center">
+                        <p className="text-slate-400 text-xs">Χωρητικότητα</p>
+                        <p className="text-white font-bold">{t.ldm || '—'} LDM</p>
+                      </div>
+                      <div className="bg-slate-700 rounded-xl p-3 text-center">
+                        <p className="text-slate-400 text-xs">Φορτίο</p>
+                        <p className="text-white font-bold">{t.payload ? `${t.payload} kg` : '—'}</p>
+                      </div>
+                      <div className="bg-slate-700 rounded-xl p-3 text-center">
+                        <p className="text-slate-400 text-xs">Θερμ/σία</p>
+                        <p className="text-white font-bold">{t.tmp || '—'}</p>
+                      </div>
+                    </div>
 
-                {av && (
-                  <div className="mt-3 bg-slate-700/50 rounded-xl px-3 py-2 text-xs text-slate-400">
-                    📍 Τελευταία: <span className="text-white">{av.ct}</span>
-                    {av.co && <> → <span className="text-blue-300">{av.co}</span></>}
-                    {av.fr && <span className="ml-2 text-green-400">Ελεύθερο: {av.fr}</span>}
-                    {av.nt && <span className="ml-2 text-slate-300">· {av.nt}</span>}
+                    {t.phone && (
+                      <p className="text-slate-500 text-xs">📞 {t.phone}</p>
+                    )}
+
+                    {av && (
+                      <div className="bg-slate-700/50 rounded-xl px-3 py-2 text-xs text-slate-400">
+                        📍 <span className="text-white">{av.ct}</span>
+                        {av.co && <> → <span className="text-blue-300">{av.co}</span></>}
+                        {av.fr && <span className="ml-2 text-green-400">Ελεύθερο: {av.fr}</span>}
+                        {av.nt && <span className="ml-2 text-slate-300">· {av.nt}</span>}
+                      </div>
+                    )}
+
+                    {t.notes && <p className="text-slate-500 text-xs italic">{t.notes}</p>}
                   </div>
                 )}
-
-                {t.notes && <p className="mt-2 text-slate-500 text-xs">{t.notes}</p>}
               </div>
             )
           })}
@@ -274,48 +338,61 @@ export default function Fleet() {
               </div>
             </div>
 
-            {/* Weekly grouped orders */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-5">
+            {/* Weekly accordion */}
+            <div className="flex-1 overflow-y-auto p-3 space-y-2">
               {weeks.length === 0 ? (
                 <p className="text-slate-500 text-sm text-center pt-8">Δεν βρέθηκαν παραγγελίες</p>
               ) : (
-                weeks.map((week, wi) => (
-                  <div key={wi}>
-                    {/* Week header */}
-                    <div className="flex items-center gap-2 mb-2">
-                      <span className="text-xs font-semibold text-slate-400 uppercase tracking-wide">
-                        📅 {week.label}
-                      </span>
-                      <span className="text-xs text-slate-600">({week.orders.length} παρ.)</span>
-                      <div className="flex-1 h-px bg-slate-800" />
-                    </div>
+                weeks.map(week => {
+                  const isWeekOpen = !!openWeeks[week.key]
+                  return (
+                    <div key={week.key} className="bg-slate-800 border border-slate-700/60 rounded-2xl overflow-hidden">
+                      {/* Week header — clickable */}
+                      <button
+                        className="w-full flex items-center justify-between px-4 py-3 hover:bg-slate-700/40 transition-colors"
+                        onClick={() => toggleWeek(week.key)}
+                      >
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-semibold text-slate-300">📅 {week.label}</span>
+                          {week.thisWeek && (
+                            <span className="text-xs bg-blue-600/30 text-blue-300 border border-blue-700/50 px-1.5 py-0.5 rounded-full">Τρέχουσα</span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-slate-500">{week.orders.length} παρ.</span>
+                          <span className="text-slate-500 text-xs">{isWeekOpen ? '▲' : '▼'}</span>
+                        </div>
+                      </button>
 
-                    {/* Orders in this week */}
-                    <div className="space-y-2">
-                      {week.orders.map(o => {
-                        const ldm = calcLdm(o)
-                        return (
-                          <div key={o.id} className="bg-slate-800 border border-slate-700/50 rounded-xl px-3 py-2.5 flex items-start gap-2.5">
-                            <span className={`text-xs px-2 py-0.5 rounded-lg border shrink-0 mt-0.5 ${STATUS_COLORS[o.status] || 'bg-slate-700 text-slate-400 border-slate-600'}`}>
-                              {o.status}
-                            </span>
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2">
-                                <p className="text-white text-sm font-medium truncate">{o.client}</p>
-                                {ldm > 0 && <span className="text-xs text-blue-400 font-mono shrink-0">{ldm.toFixed(2)} LDM</span>}
+                      {/* Week orders */}
+                      {isWeekOpen && (
+                        <div className="px-3 pb-3 space-y-2 border-t border-slate-700/40">
+                          {week.orders.map(o => {
+                            const ldm = calcLdm(o)
+                            return (
+                              <div key={o.id} className="bg-slate-700/50 rounded-xl px-3 py-2.5 flex items-start gap-2.5 mt-2">
+                                <span className={`text-xs px-2 py-0.5 rounded-lg border shrink-0 mt-0.5 ${STATUS_COLORS[o.status] || 'bg-slate-700 text-slate-400 border-slate-600'}`}>
+                                  {o.status}
+                                </span>
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-2">
+                                    <p className="text-white text-sm font-medium truncate">{o.client}</p>
+                                    {ldm > 0 && <span className="text-xs text-blue-400 font-mono shrink-0">{ldm.toFixed(2)} LDM</span>}
+                                  </div>
+                                  <p className="text-slate-400 text-xs truncate">{o.from || '—'} → {o.to || '—'}</p>
+                                  <div className="flex gap-3 mt-0.5 text-xs text-slate-600 flex-wrap">
+                                    {o.load_date     && <span>Φόρτ: {fmtDate(o.load_date)}</span>}
+                                    {o.delivery_date && <span>Παρ: {fmtDate(o.delivery_date)}</span>}
+                                  </div>
+                                </div>
                               </div>
-                              <p className="text-slate-400 text-xs truncate">{o.from || '—'} → {o.to || '—'}</p>
-                              <div className="flex gap-3 mt-0.5 text-xs text-slate-600 flex-wrap">
-                                {o.load_date    && <span>Φόρτ: {fmtDate(o.load_date)}</span>}
-                                {o.delivery_date && <span>Παρ: {fmtDate(o.delivery_date)}</span>}
-                              </div>
-                            </div>
-                          </div>
-                        )
-                      })}
+                            )
+                          })}
+                        </div>
+                      )}
                     </div>
-                  </div>
-                ))
+                  )
+                })
               )}
             </div>
           </div>
