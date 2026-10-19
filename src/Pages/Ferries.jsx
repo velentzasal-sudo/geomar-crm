@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
+import * as XLSX from 'xlsx'
 import {
   format, startOfMonth, endOfMonth, startOfWeek, addDays,
   isSameMonth, isToday, isSameDay, parseISO
@@ -181,6 +182,37 @@ export default function Ferries() {
     loadAll()
   }
 
+  function exportXlsx() {
+    const rows = monthBookings.map(b => ({
+      'Ημερομηνία':   b.departure || '',
+      'Δρομολόγιο':   b.route || '',
+      'Εταιρεία':     b.company || '',
+      'Φορτηγό':      b.truck || '',
+      'Μέτρα':        b.meters ?? 16.5,
+      '€/μέτρο':      b.price_per_m ?? '',
+      'Σύνολο (€)':   b.total_cost ?? '',
+      'Αρ. Κράτησης': b.booking_ref || '',
+      'Σημειώσεις':   b.notes || '',
+    }))
+
+    // Σύνολα ανά εταιρεία
+    const summaryRows = [
+      {},
+      { 'Δρομολόγιο': 'ΣΥΝΟΛΑ', 'Εταιρεία': 'Hellenic Ferry Services', 'Σύνολο (€)': companyTotals['Hellenic Ferry Services'] },
+      { 'Δρομολόγιο': '',        'Εταιρεία': 'Blue Star',               'Σύνολο (€)': companyTotals['Blue Star'] },
+      { 'Δρομολόγιο': '',        'Εταιρεία': 'ΓΕΝΙΚΟ ΣΥΝΟΛΟ',           'Σύνολο (€)': monthTotal },
+    ]
+
+    const ws = XLSX.utils.json_to_sheet([...rows, ...summaryRows])
+    ws['!cols'] = [
+      { wch: 12 }, { wch: 28 }, { wch: 24 }, { wch: 12 },
+      { wch: 8 },  { wch: 10 }, { wch: 12 }, { wch: 16 }, { wch: 24 },
+    ]
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, format(current, 'MMM yyyy', { locale: el }))
+    XLSX.writeFile(wb, `Καράβια_${format(current, 'yyyy-MM', { locale: el })}.xlsx`)
+  }
+
   const DAY_LABELS = ['Δευ', 'Τρι', 'Τετ', 'Πεμ', 'Παρ', 'Σαβ', 'Κυρ']
 
   return (
@@ -201,6 +233,10 @@ export default function Ferries() {
             className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-sm transition-colors">Σήμερα</button>
           <button onClick={() => setCurrent(c => addDays(endOfMonth(c), 1))}
             className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-sm transition-colors">›</button>
+          <button onClick={exportXlsx}
+            className="px-3 py-2 bg-green-700 hover:bg-green-600 text-white rounded-xl text-sm transition-colors">
+            📥 Excel
+          </button>
         </div>
       </div>
 
