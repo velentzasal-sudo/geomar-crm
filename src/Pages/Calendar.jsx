@@ -206,7 +206,16 @@ export default function Calendar() {
     if (!orderForm.client?.trim()) { setOrderErrors({ client: 'Υποχρεωτικό' }); return }
     setOrderSaving(true)
     const { id: _id, ...rest } = orderForm
-    const payload = { ...rest, qty: parseFloat(orderForm.qty)||0, ldm: parseFloat(orderForm.ldm)||0, wgt: parseFloat(orderForm.wgt)||0, price: parseFloat(orderForm.price)||0 }
+    const payload = {
+      ...rest,
+      qty: parseFloat(orderForm.qty)||0,
+      ldm: parseFloat(orderForm.ldm)||0,
+      wgt: parseFloat(orderForm.wgt)||0,
+      price: parseFloat(orderForm.price)||0,
+      load_date: orderForm.load_date || null,
+      delivery_date: orderForm.delivery_date || null,
+      rdy: orderForm.rdy || null,
+    }
     await supabase.from('orders').update(payload).eq('id', orderModal.id)
     setOrderSaving(false)
     setOrderModal(null)
@@ -496,10 +505,49 @@ export default function Calendar() {
                 <OField label="Ημ. Φόρτωσης" name="load_date" type="date" value={orderForm.load_date} onChange={handleOrderChange} />
                 <OField label="Ημ. Παράδοσης" name="delivery_date" type="date" value={orderForm.delivery_date} onChange={handleOrderChange} />
                 <OField label="Τιμή (€)" name="price" type="number" value={orderForm.price} onChange={handleOrderChange} />
-                <div>
+                <div className="relative">
                   <label className="block text-xs text-slate-400 mb-1">Φορτηγό</label>
-                  <input name="truck" value={orderForm.truck} onChange={handleOrderChange}
-                    className="w-full bg-slate-700 border border-slate-600 rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500" />
+                  <button
+                    type="button"
+                    onClick={() => setTruckOpen(o => !o)}
+                    className={`w-full flex items-center justify-between px-3 py-2 rounded-xl border text-sm transition-colors ${
+                      orderForm.truck ? 'bg-slate-700 border-blue-500 text-white' : 'bg-slate-700 border-slate-600 text-slate-400'
+                    }`}
+                  >
+                    <span>{orderForm.truck || 'Επιλογή φορτηγού...'}</span>
+                    <span className="text-slate-500">{truckOpen ? '▲' : '▼'}</span>
+                  </button>
+                  {truckOpen && (
+                    <div className="absolute z-50 mt-1 w-full bg-slate-800 border border-slate-600 rounded-xl shadow-xl overflow-hidden">
+                      <div className="p-2 border-b border-slate-700">
+                        <input
+                          autoFocus
+                          value={truckSearch}
+                          onChange={e => setTruckSearch(e.target.value)}
+                          placeholder="Αναζήτηση..."
+                          className="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-1.5 text-white text-sm focus:outline-none focus:border-blue-500"
+                        />
+                      </div>
+                      <div className="max-h-48 overflow-y-auto">
+                        <button
+                          type="button"
+                          onClick={() => { setOrderForm(f => ({ ...f, truck: '' })); setTruckOpen(false); setTruckSearch('') }}
+                          className="w-full text-left px-3 py-2 text-slate-400 text-sm hover:bg-slate-700"
+                        >— Χωρίς φορτηγό</button>
+                        {trucks
+                          .filter(t => t.tr.toLowerCase().includes(truckSearch.toLowerCase()) || (t.driver || '').toLowerCase().includes(truckSearch.toLowerCase()))
+                          .map(t => (
+                            <button key={t.tr} type="button"
+                              onClick={() => { setOrderForm(f => ({ ...f, truck: t.tr })); setTruckOpen(false); setTruckSearch('') }}
+                              className={`w-full text-left px-3 py-2 flex items-center gap-3 hover:bg-slate-700 transition-colors ${orderForm.truck === t.tr ? 'bg-blue-900/40' : ''}`}
+                            >
+                              <span className="text-white text-sm font-medium">{t.tr}</span>
+                              {t.driver && <span className="text-slate-400 text-xs">{t.driver}</span>}
+                            </button>
+                          ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
                 <div>
                   <label className="block text-xs text-slate-400 mb-1">Status</label>
