@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { format, startOfWeek, addDays, isToday, parseISO } from 'date-fns'
 import { el } from 'date-fns/locale'
@@ -7,29 +8,34 @@ const DAYS = ['Δευ', 'Τρί', 'Τετ', 'Πέμ', 'Παρ', 'Σάβ', 'Κυ�
 const TLDM = 13.20
 const LDM_FACTORS = { E: 0.40, B: 0.50, P: 0.60, M: 1.00 }
 
-const STATUSES = [
+const AVAIL_STATUSES = [
   { key: 'Διαθέσιμο',  label: 'Διαθέσιμο',  color: 'bg-green-900/60 text-green-300 border-green-700' },
-  { key: 'Φορτωμένο',  label: 'Φορτωμένο',  color: 'bg-blue-900/60 text-blue-300 border-blue-700' },
   { key: 'Εν κινήσει', label: 'Εν κινήσει', color: 'bg-cyan-900/60 text-cyan-300 border-cyan-700' },
   { key: 'Ρεπό',       label: 'Ρεπό',        color: 'bg-slate-700 text-slate-400 border-slate-600' },
   { key: 'Service',    label: 'Service',     color: 'bg-red-900/60 text-red-300 border-red-700' },
 ]
 
-const STATUS_STYLE = Object.fromEntries(STATUSES.map(s => [s.key, s.color]))
-
-function cellStyle(status) {
-  return STATUS_STYLE[status] || 'bg-slate-800 text-slate-600 border-slate-700'
-}
-
 export default function Weekly() {
-  const [trucks, setTrucks]   = useState([])
-  const [avail, setAvail]     = useState([])
-  const [orders, setOrders]   = useState([])
-  const [loading, setLoading] = useState(true)
-  const [weekStart, setWeekStart] = useState(startOfWeek(new Date(), { weekStartsOn: 1 }))
-  const [editing, setEditing] = useState(null) // { tr, date }
-  const [form, setForm] = useState({ status: 'Διαθέσιμο', location: '', notes: '' })
-  const [saving, setSaving] = useState(false)
+  const [searchParams, setSearchParams] = useSearchParams()
+  const [trucks, setTrucks]     = useState([])
+  const [avail, setAvail]       = useState([])
+  const [orders, setOrders]     = useState([])
+  const [loading, setLoading]   = useState(true)
+  const [showAll, setShowAll]   = useState(false)
+  const [weekStart, setWeekStart] = useState(() => {
+    const dp = searchParams.get('date')
+    if (dp) {
+      try { return startOfWeek(parseISO(dp), { weekStartsOn: 1 }) } catch {}
+    }
+    return startOfWeek(new Date(), { weekStartsOn: 1 })
+  })
+
+  // cell detail popup: { tr, date }
+  const [detail, setDetail]   = useState(null)
+  // avail edit modal: { tr, date }
+  const [editing, setEditing] = useState(null)
+  const [form, setForm]       = useState({ status: 'Διαθέσιμο', location: '', notes: '' })
+  const [saving, setSaving]   = useState(false)
 
   useEffect(() => { loadAll() }, [weekStart])
 
@@ -40,13 +46,16 @@ export default function Weekly() {
     const [{ data: t }, { data: a }, { data: o }] = await Promise.all([
       supabase.from('trucks').select('*').order('tr'),
       supabase.from('avail').select('*').gte('fr', from).lte('fr', to),
-      supabase.from('orders').select('id,truck,status,ldm,qty,pal,rdy,load_date,delivery_date')
+      supabase.from('orders')
+        .select('id,client,truck,status,ldm,qty,pal,rdy,load_date,delivery_date,from,to')
         .not('status', 'eq', 'Delivered'),
     ])
     setTrucks(t || [])
     setAvail(a || [])
     setOrders(o || [])
     setLoading(false)
+    // clear date param after applying it
+    if (searchParams.get('date')) setSearchParams({})
   }
 
   const weekDays = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i))
@@ -56,36 +65,59 @@ export default function Weekly() {
     return avail.find(a => a.tr === tr && a.fr === d)
   }
 
-  // LDM for truck on a specific date (orders active that day)
-  function getDayLdm(tr, date) {
+  function getDayOrders(tr, date) {
     const d = format(date, 'yyyy-MM-dd')
-    return orders
-      .filter(o => {
-        if (o.truck !== tr) return false
-        if (o.status === 'Open') return false
-        // order is "active" on this day if load_date <= d <= delivery_date, or just assigned
-        const load = o.load_date?.substring(0, 10) || o.rdy?.substring(0, 10)
-        const del  = o.delivery_date?.substring(0, 10)
-        if (load && del) return d >= load && d <= del
-        if (load) return d >= load
-        return false
-      })
-      .reduce((sum, o) => {
-        const ldm = parseFloat(o.ldm) || (o.pal && o.qty ? (LDM_FACTORS[o.pal] || 0) * parseFloat(o.qty) : 0)
-        return sum + ldm
-      }, 0)
+    return orders.filter(o => {
+      if (o.truck !== tr) return false
+      const load = o.load_date?.substring(0, 10) || o.rdy?.substring(0, 10)
+      const del  = o.delivery_date?.substring(0, 10)
+      if (load && del) return d >= load && d <= del
+      if (load) return d >= load
+      return false
+    })
   }
 
-  // Derive cell status: manual overrides, else from LDM
-  function getCellStatus(tr, date) {
-    const rec = getAvail(tr, date)
-    if (rec) return rec.nt || 'Διαθέσιμο'
-    const ldm = getDayLdm(tr, date)
-    if (ldm >= TLDM) return 'Φορτωμένο'
-    if (ldm > 0) return 'Φορτωμένο'
-    return null // no info = empty
+  function getDayLdm(tr, date) {
+    return getDayOrders(tr, date).reduce((sum, o) => {
+      const ldm = parseFloat(o.ldm) || (o.pal && o.qty ? (LDM_FACTORS[o.pal] || 0) * parseFloat(o.qty) : 0)
+      return sum + ldm
+    }, 0)
   }
 
+  // Is this truck "active" this week? (has order or avail record)
+  function isActiveTruck(tr) {
+    const from = format(weekStart, 'yyyy-MM-dd')
+    const to   = format(addDays(weekStart, 6), 'yyyy-MM-dd')
+    const hasAvail  = avail.some(a => a.tr === tr && a.fr >= from && a.fr <= to)
+    const hasOrders = orders.some(o => {
+      if (o.truck !== tr) return false
+      const load = o.load_date?.substring(0, 10) || o.rdy?.substring(0, 10)
+      const del  = o.delivery_date?.substring(0, 10)
+      if (load && del) return load <= to && del >= from
+      if (load) return load <= to && load >= from
+      return false
+    })
+    return hasAvail || hasOrders
+  }
+
+  const visibleTrucks = showAll ? trucks : trucks.filter(t => isActiveTruck(t.tr))
+
+  // LDM bar color
+  function ldmColor(used, cap) {
+    const pct = used / cap
+    if (used === 0) return 'bg-slate-600'
+    if (pct >= 1)   return 'bg-red-500'
+    if (pct >= 0.7) return 'bg-orange-500'
+    return 'bg-green-500'
+  }
+
+  function ldmTextColor(free) {
+    if (free <= 0)  return 'text-red-400'
+    if (free < 4)   return 'text-orange-400'
+    return 'text-green-400'
+  }
+
+  // Open avail edit modal
   function openEdit(tr, date) {
     const rec = getAvail(tr, date)
     setEditing({ tr, date })
@@ -94,6 +126,7 @@ export default function Weekly() {
       location: rec?.ct || '',
       notes:    rec?.co || '',
     })
+    setDetail(null)
   }
 
   async function saveCell() {
@@ -115,8 +148,7 @@ export default function Weekly() {
 
   async function clearCell() {
     if (!editing) return
-    const { tr, date } = editing
-    const existing = getAvail(tr, date)
+    const existing = getAvail(editing.tr, editing.date)
     if (existing) await supabase.from('avail').delete().eq('id', existing.id)
     setEditing(null)
     loadAll()
@@ -126,10 +158,22 @@ export default function Weekly() {
 
   return (
     <div className="p-4 md:p-6 space-y-4">
+
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <h1 className="text-2xl md:text-3xl font-bold text-white">📋 Εβδομαδιαίος Πλάνος</h1>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <button
+            onClick={() => setShowAll(v => !v)}
+            className={`px-3 py-2 rounded-xl text-xs font-medium border transition-colors ${
+              showAll
+                ? 'bg-slate-600 border-slate-500 text-white'
+                : 'bg-slate-800 border-slate-700 text-slate-400 hover:text-white'
+            }`}
+          >
+            {showAll ? '👁 Όλα' : '⚡ Ενεργά'}
+          </button>
+          <div className="w-px h-5 bg-slate-700" />
           <button onClick={() => setWeekStart(w => addDays(w, -7))}
             className="bg-slate-700 hover:bg-slate-600 text-white px-3 py-2 rounded-xl text-sm">◀</button>
           <span className="text-slate-300 text-sm min-w-[160px] text-center">
@@ -142,72 +186,204 @@ export default function Weekly() {
         </div>
       </div>
 
-      {/* Legend */}
-      <div className="flex flex-wrap gap-2 text-xs">
-        {STATUSES.map(s => (
-          <span key={s.key} className={`px-2 py-1 rounded-lg border ${s.color}`}>{s.label}</span>
-        ))}
-        <span className="px-2 py-1 rounded-lg border bg-slate-800 text-slate-600 border-slate-700">— Άγνωστο</span>
-      </div>
+      {visibleTrucks.length === 0 && (
+        <div className="bg-slate-800 border border-slate-700 rounded-2xl p-6 text-center">
+          <p className="text-slate-400 text-sm">Δεν υπάρχουν ενεργά φορτηγά αυτή την εβδομάδα.</p>
+          <button onClick={() => setShowAll(true)} className="mt-2 text-blue-400 text-sm hover:underline">
+            Εμφάνιση όλων →
+          </button>
+        </div>
+      )}
 
       {/* Grid */}
-      <div className="overflow-x-auto">
-        <table className="w-full border-collapse min-w-[600px]">
-          <thead>
-            <tr>
-              <th className="text-left text-slate-400 text-xs font-medium py-2 pr-3 w-28">Φορτηγό</th>
-              {weekDays.map((d, i) => (
-                <th key={i} className={`text-center text-xs font-medium py-2 px-1 min-w-[100px] ${isToday(d) ? 'text-blue-400' : 'text-slate-400'}`}>
-                  <div>{DAYS[i]}</div>
-                  <div className={`text-xs ${isToday(d) ? 'text-blue-500' : 'text-slate-500'}`}>{format(d, 'd/M')}</div>
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {trucks.map(t => (
-              <tr key={t.id} className="border-t border-slate-800">
-                <td className="py-2 pr-3">
-                  <p className="text-white text-sm font-bold">{t.tr}</p>
-                  <p className="text-slate-500 text-xs truncate max-w-[100px]">{t.driver}</p>
-                </td>
-                {weekDays.map((d, i) => {
-                  const rec    = getAvail(t.tr, d)
-                  const status = getCellStatus(t.tr, d)
-                  const ldm    = getDayLdm(t.tr, d)
-                  const isManual = !!rec
-                  const today  = isToday(d)
-
-                  return (
-                    <td key={i} className={`py-1 px-1 ${today ? 'bg-blue-950/20' : ''}`}>
-                      <button
-                        onClick={() => openEdit(t.tr, d)}
-                        className={`w-full rounded-xl px-2 py-2 text-xs border text-left transition-all min-h-[52px] ${
-                          status ? cellStyle(status) : 'bg-slate-800/60 border-slate-700 text-slate-600 hover:bg-slate-700 hover:text-slate-400'
-                        }`}
-                      >
-                        {status ? (
-                          <div>
-                            <div className="font-medium">{status}</div>
-                            {rec?.ct && <div className="opacity-70 truncate">📍 {rec.ct}</div>}
-                            {ldm > 0 && <div className="opacity-60">{ldm.toFixed(1)} LDM</div>}
-                          </div>
-                        ) : (
-                          <span className="opacity-40">—</span>
-                        )}
-                      </button>
-                    </td>
-                  )
-                })}
+      {visibleTrucks.length > 0 && (
+        <div className="overflow-x-auto">
+          <table className="w-full border-collapse min-w-[640px]">
+            <thead>
+              <tr>
+                <th className="text-left text-slate-400 text-xs font-medium py-2 pr-3 w-28">Φορτηγό</th>
+                {weekDays.map((d, i) => (
+                  <th key={i} className={`text-center text-xs font-medium py-2 px-1 min-w-[110px] ${isToday(d) ? 'text-blue-400' : 'text-slate-400'}`}>
+                    <div>{DAYS[i]}</div>
+                    <div className={`text-xs ${isToday(d) ? 'text-blue-500' : 'text-slate-500'}`}>{format(d, 'd/M')}</div>
+                  </th>
+                ))}
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+            </thead>
+            <tbody>
+              {visibleTrucks.map(t => (
+                <tr key={t.id} className="border-t border-slate-800">
+                  <td className="py-2 pr-3">
+                    <p className="text-white text-sm font-bold">{t.tr}</p>
+                    <p className="text-slate-500 text-xs truncate max-w-[100px]">{t.driver}</p>
+                  </td>
+                  {weekDays.map((d, i) => {
+                    const rec       = getAvail(t.tr, d)
+                    const dayOrders = getDayOrders(t.tr, d)
+                    const ldmUsed   = getDayLdm(t.tr, d)
+                    const cap       = parseFloat(t.ldm) || TLDM
+                    const ldmFree   = cap - ldmUsed
+                    const pct       = Math.min(100, (ldmUsed / cap) * 100)
+                    const today     = isToday(d)
+                    const availSt   = rec?.nt
 
-      <p className="text-slate-600 text-xs">Κλικ σε κελί για να ορίσεις κατάσταση · LDM υπολογίζεται αυτόματα από παραγγελίες</p>
+                    // Determine cell mode
+                    const hasActivity = dayOrders.length > 0 || !!rec
 
-      {/* Edit modal */}
+                    return (
+                      <td key={i} className={`py-1 px-1 ${today ? 'bg-blue-950/20' : ''}`}>
+                        <button
+                          onClick={() => {
+                            if (dayOrders.length > 0) {
+                              setDetail({ tr: t.tr, date: d, orders: dayOrders, rec, ldmUsed, cap, ldmFree, truck: t })
+                            } else {
+                              openEdit(t.tr, d)
+                            }
+                          }}
+                          className={`w-full rounded-xl px-2 py-2 text-xs border text-left transition-all min-h-[64px] group ${
+                            hasActivity
+                              ? 'bg-slate-700/80 border-slate-600 hover:border-slate-500'
+                              : 'bg-slate-800/40 border-slate-700/50 hover:bg-slate-700/40 hover:border-slate-600'
+                          }`}
+                        >
+                          {hasActivity ? (
+                            <div className="space-y-1">
+                              {/* Avail status badge */}
+                              {availSt && availSt !== 'Φορτωμένο' && (
+                                <div className={`text-xs px-1.5 py-0.5 rounded-md inline-block border ${
+                                  availSt === 'Διαθέσιμο'  ? 'bg-green-900/60 text-green-300 border-green-800' :
+                                  availSt === 'Εν κινήσει' ? 'bg-cyan-900/60 text-cyan-300 border-cyan-800' :
+                                  availSt === 'Ρεπό'       ? 'bg-slate-700 text-slate-400 border-slate-600' :
+                                  'bg-red-900/60 text-red-300 border-red-800'
+                                }`}>{availSt}</div>
+                              )}
+                              {/* Location */}
+                              {rec?.ct && (
+                                <div className="text-slate-400 text-xs truncate">📍 {rec.ct}</div>
+                              )}
+                              {/* Orders count */}
+                              {dayOrders.length > 0 && (
+                                <div className="text-slate-300 text-xs">
+                                  📦 {dayOrders.length} παρ.
+                                </div>
+                              )}
+                              {/* LDM bar */}
+                              {ldmUsed > 0 && (
+                                <>
+                                  <div className="w-full bg-slate-600 rounded-full h-1 mt-1">
+                                    <div
+                                      className={`h-1 rounded-full ${ldmColor(ldmUsed, cap)}`}
+                                      style={{ width: `${pct}%` }}
+                                    />
+                                  </div>
+                                  <div className={`text-xs font-medium ${ldmTextColor(ldmFree)}`}>
+                                    {ldmFree > 0 ? `${ldmFree.toFixed(1)} LDM ελεύθερο` : '⚠️ Γεμάτο'}
+                                  </div>
+                                </>
+                              )}
+                            </div>
+                          ) : (
+                            <div className="flex flex-col items-center justify-center h-12 opacity-30 group-hover:opacity-60 transition-opacity">
+                              <span className="text-slate-400 text-lg">+</span>
+                              <span className="text-slate-500 text-xs">{cap.toFixed(1)} LDM</span>
+                            </div>
+                          )}
+                        </button>
+                      </td>
+                    )
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      <p className="text-slate-600 text-xs">Κλικ σε κελί με παραγγελίες → λεπτομέρειες · Κλικ σε κενό κελί → ορισμός κατάστασης</p>
+
+      {/* ── DETAIL POPUP ── */}
+      {detail && (
+        <div className="fixed inset-0 bg-black/60 flex items-end sm:items-center justify-center z-50 p-0 sm:p-4"
+          onClick={e => { if (e.target === e.currentTarget) setDetail(null) }}>
+          <div className="bg-slate-800 rounded-t-3xl sm:rounded-3xl border border-slate-700 w-full sm:max-w-md p-6 space-y-4">
+            <div className="flex items-start justify-between">
+              <div>
+                <h2 className="text-lg font-bold text-white">🚛 {detail.tr}</h2>
+                <p className="text-slate-400 text-sm">{format(detail.date, 'EEEE d MMMM', { locale: el })}</p>
+              </div>
+              <button onClick={() => setDetail(null)} className="text-slate-500 hover:text-white text-xl leading-none">✕</button>
+            </div>
+
+            {/* LDM summary */}
+            <div className="bg-slate-700/50 rounded-2xl p-3 flex items-center gap-4">
+              <div className="flex-1">
+                <div className="w-full bg-slate-600 rounded-full h-2">
+                  <div
+                    className={`h-2 rounded-full ${ldmColor(detail.ldmUsed, detail.cap)}`}
+                    style={{ width: `${Math.min(100, (detail.ldmUsed / detail.cap) * 100)}%` }}
+                  />
+                </div>
+              </div>
+              <div className="text-right shrink-0">
+                <p className={`text-sm font-bold ${ldmTextColor(detail.ldmFree)}`}>
+                  {detail.ldmFree > 0 ? `${detail.ldmFree.toFixed(2)} LDM ελεύθερο` : '⚠️ Γεμάτο'}
+                </p>
+                <p className="text-slate-500 text-xs">{detail.ldmUsed.toFixed(2)} / {detail.cap} χρησιμοποιείται</p>
+              </div>
+            </div>
+
+            {/* Avail info */}
+            {detail.rec && (
+              <div className="bg-slate-700/30 rounded-xl px-3 py-2 flex items-center justify-between">
+                <div>
+                  <span className="text-slate-300 text-sm">{detail.rec.nt}</span>
+                  {detail.rec.ct && <span className="text-slate-500 text-xs ml-2">📍 {detail.rec.ct}</span>}
+                  {detail.rec.co && <p className="text-slate-500 text-xs mt-0.5 italic">{detail.rec.co}</p>}
+                </div>
+                <button
+                  onClick={() => openEdit(detail.tr, detail.date)}
+                  className="text-xs text-slate-400 hover:text-white bg-slate-700 hover:bg-slate-600 px-2 py-1 rounded-lg transition-colors"
+                >✏️</button>
+              </div>
+            )}
+
+            {/* Orders list */}
+            <div className="space-y-2">
+              {detail.orders.map(o => {
+                const ldm = parseFloat(o.ldm) || 0
+                return (
+                  <div key={o.id} className="bg-slate-700 rounded-xl px-3 py-2.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-white text-sm font-medium truncate">{o.client}</p>
+                      <span className="text-slate-400 text-xs shrink-0">{ldm.toFixed(2)} LDM</span>
+                    </div>
+                    {(o.from || o.to) && (
+                      <p className="text-slate-400 text-xs mt-0.5 truncate">{o.from} → {o.to}</p>
+                    )}
+                    {(o.load_date || o.delivery_date) && (
+                      <p className="text-slate-500 text-xs mt-0.5">
+                        {o.load_date ? `📦 ${o.load_date.substring(0,10)}` : ''}
+                        {o.delivery_date ? ` → 🏁 ${o.delivery_date.substring(0,10)}` : ''}
+                      </p>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+
+            {!detail.rec && (
+              <button
+                onClick={() => openEdit(detail.tr, detail.date)}
+                className="w-full bg-slate-700 hover:bg-slate-600 text-slate-300 py-2 rounded-xl text-sm transition-colors"
+              >
+                + Ορισμός κατάστασης
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── AVAIL EDIT MODAL ── */}
       {editing && (
         <div className="fixed inset-0 bg-black/60 flex items-end sm:items-center justify-center z-50 p-0 sm:p-4">
           <div className="bg-slate-800 rounded-t-3xl sm:rounded-3xl border border-slate-700 w-full sm:max-w-sm p-6 space-y-4">
@@ -224,7 +400,7 @@ export default function Weekly() {
             <div>
               <label className="block text-xs text-slate-400 mb-2">Κατάσταση</label>
               <div className="grid grid-cols-2 gap-2">
-                {STATUSES.map(s => (
+                {AVAIL_STATUSES.map(s => (
                   <button key={s.key}
                     onClick={() => setForm(f => ({ ...f, status: s.key }))}
                     className={`py-2 px-3 rounded-xl text-sm border transition-colors ${
