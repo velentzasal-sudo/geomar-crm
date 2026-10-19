@@ -12,7 +12,7 @@ const links = [
   { to: '/weekly',    label: 'Εβδ. Πλάνος',  icon: '📋' },
 ]
 
-export default function Sidebar({ user }) {
+export default function Sidebar({ user, onNavigate }) {
   const handleLogout = async () => {
     await supabase.auth.signOut()
   }
@@ -37,6 +37,7 @@ export default function Sidebar({ user }) {
             key={to}
             to={to}
             end={to === '/'}
+            onClick={onNavigate}
             className={({ isActive }) =>
               `flex items-center gap-3 px-4 py-3 rounded-2xl text-sm font-medium transition-colors ${
                 isActive
