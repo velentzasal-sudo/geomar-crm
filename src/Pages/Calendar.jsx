@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { format, startOfMonth, endOfMonth, startOfWeek, addDays, isSameMonth, isToday, isSameDay } from 'date-fns'
@@ -6,6 +6,18 @@ import { el } from 'date-fns/locale'
 
 const TLDM = 13.20
 const LDM_FACTORS = { E: 0.40, B: 0.50, P: 0.60, M: 1.00 }
+const STATUSES = ['Open', 'Ανατεθειμένη', 'Μεταφορά', 'Παράδοση', 'Delivered']
+const PAL_TYPES = ['E', 'B', 'P', 'M', 'χύμα']
+const ORDER_EMPTY = {
+  client:'', firm:'', from:'', to:'', recip:'',
+  pal:'E', qty:'', ldm:'', wgt:'', tmp:'',
+  rdy:'', load_date:'', delivery_date:'', price:'', notes:'', status:'Open', truck:'',
+}
+function calcLdmVal(pal, qty) {
+  if (!qty || pal === 'χύμα') return ''
+  const f = LDM_FACTORS[pal]
+  return f ? (parseFloat(qty) * f).toFixed(2) : ''
+}
 
 const STATUS_COLORS = {
   'Open':          'bg-blue-600',
@@ -21,6 +33,16 @@ const AVAIL_STATUSES = [
   { key: 'Ρεπό',       label: 'Ρεπό',        color: 'bg-slate-700 text-slate-400 border-slate-600' },
   { key: 'Service',    label: 'Service',     color: 'bg-red-900/60 text-red-300 border-red-700' },
 ]
+
+function OField({ label, name, value, onChange, type = 'text' }) {
+  return (
+    <div>
+      <label className="block text-xs text-slate-400 mb-1">{label}</label>
+      <input type={type} name={name} value={value ?? ''} onChange={onChange}
+        className="w-full bg-slate-700 border border-slate-600 rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500" />
+    </div>
+  )
+}
 
 export default function Calendar() {
   const [orders, setOrders]             = useState([])
@@ -41,9 +63,24 @@ export default function Calendar() {
   const [truckSearch, setTruckSearch] = useState('')
   const [truckOpen, setTruckOpen]     = useState(false)
 
+  // Order edit modal (inline from calendar)
+  const [orderModal, setOrderModal] = useState(null) // order object or 'new'
+  const [orderForm, setOrderForm]   = useState(ORDER_EMPTY)
+  const [orderSaving, setOrderSaving] = useState(false)
+  const [clients, setClients]       = useState([])
+  const [firms, setFirms]           = useState([])
+  const [orderErrors, setOrderErrors] = useState({})
+
+  // Banner: trucks delivering today
+  const todayStr = format(new Date(), 'yyyy-MM-dd')
+
   const navigate = useNavigate()
 
   useEffect(() => { loadAll() }, [])
+  useEffect(() => {
+    supabase.from('clients').select('id,name,city,address').order('name').then(({ data }) => setClients(data || []))
+    supabase.from('firms').select('id,name,street,num,city,country').order('name').then(({ data }) => setFirms(data || []))
+  }, [])
 
   async function loadAll() {
     setLoading(true)
@@ -133,6 +170,49 @@ export default function Calendar() {
   const selectedPayments = selected ? paymentsForDay(selected) : []
   const selectedAvail    = selected ? availForDay(selected) : []
 
+  // Trucks delivering today (delivery_date = today, not yet Delivered)
+  const deliveringToday = trucks.filter(t =>
+    orders.some(o => o.truck === t.tr && o.delivery_date?.substring(0,10) === todayStr && o.status !== 'Delivered')
+  )
+
+  async function markAvailTomorrow(trList) {
+    const tomorrow = format(addDays(new Date(), 1), 'yyyy-MM-dd')
+    for (const t of trList) {
+      const exists = availRecords.find(a => a.tr === t.tr && a.fr === tomorrow)
+      if (!exists) {
+        await supabase.from('avail').insert([{ tr: t.tr, fr: tomorrow, nt: 'Διαθέσιμο', ct: '', co: 'Αυτόματο από παράδοση' }])
+      }
+    }
+    loadAll()
+  }
+
+  // Order modal helpers
+  function openOrderEdit(o) {
+    setOrderForm({ ...o })
+    setOrderErrors({})
+    setOrderModal(o)
+  }
+
+  function handleOrderChange(e) {
+    const { name, value } = e.target
+    setOrderForm(f => {
+      const next = { ...f, [name]: value }
+      if (name === 'qty' || name === 'pal') next.ldm = calcLdmVal(next.pal, next.qty)
+      return next
+    })
+  }
+
+  async function saveOrder() {
+    if (!orderForm.client?.trim()) { setOrderErrors({ client: 'Υποχρεωτικό' }); return }
+    setOrderSaving(true)
+    const { id: _id, ...rest } = orderForm
+    const payload = { ...rest, qty: parseFloat(orderForm.qty)||0, ldm: parseFloat(orderForm.ldm)||0, wgt: parseFloat(orderForm.wgt)||0, price: parseFloat(orderForm.price)||0 }
+    await supabase.from('orders').update(payload).eq('id', orderModal.id)
+    setOrderSaving(false)
+    setOrderModal(null)
+    loadAll()
+  }
+
   // Open add avail modal for a date
   function openAddModal(date) {
     setAddModal(date)
@@ -189,6 +269,26 @@ export default function Calendar() {
             className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded-xl text-sm">Σήμερα</button>
         </div>
       </div>
+
+      {/* Banner: trucks delivering today */}
+      {deliveringToday.length > 0 && (
+        <div className="bg-green-900/30 border border-green-700/50 rounded-2xl px-4 py-3 flex items-center gap-3 flex-wrap">
+          <span className="text-green-300 text-sm font-medium">🏁 Παραδίδουν σήμερα:</span>
+          <div className="flex gap-2 flex-wrap flex-1">
+            {deliveringToday.map(t => (
+              <span key={t.tr} className="bg-green-800/50 text-green-200 text-xs px-2 py-1 rounded-lg border border-green-700">
+                🚚 {t.tr}
+              </span>
+            ))}
+          </div>
+          <button
+            onClick={() => markAvailTomorrow(deliveringToday)}
+            className="text-xs bg-green-600 hover:bg-green-500 text-white px-3 py-1.5 rounded-xl transition-colors shrink-0"
+          >
+            ✅ Διαθέσιμα αύριο
+          </button>
+        </div>
+      )}
 
       {/* Main area: calendar + sidebar */}
       <div className="flex gap-4 flex-1 min-h-0">
@@ -320,16 +420,18 @@ export default function Calendar() {
                   <p className="text-slate-400 text-xs font-medium uppercase tracking-wide mb-2">📦 Παραγγελίες</p>
                   <div className="space-y-2">
                     {selectedOrders.map(o => (
-                      <div key={o.id} className="bg-slate-700 rounded-xl px-3 py-2">
+                      <button key={o.id} onClick={() => openOrderEdit(o)}
+                        className="w-full text-left bg-slate-700 hover:bg-slate-600 rounded-xl px-3 py-2 transition-colors group">
                         <div className="flex items-center gap-2 mb-1">
                           <span className={`text-xs px-2 py-0.5 rounded-lg text-white shrink-0 ${STATUS_COLORS[o.status] || 'bg-slate-600'}`}>
                             {o.status}
                           </span>
                           {o.truck && <span className="text-slate-500 text-xs">🚛 {o.truck}</span>}
+                          <span className="ml-auto text-slate-600 group-hover:text-slate-400 text-xs">✏️</span>
                         </div>
                         <p className="text-white text-sm font-medium truncate">{o.client}</p>
                         <p className="text-slate-400 text-xs">{o.from} → {o.to}</p>
-                      </div>
+                      </button>
                     ))}
                   </div>
                 </div>
@@ -361,6 +463,68 @@ export default function Calendar() {
         </div>
 
       </div>
+
+      {/* ── ORDER EDIT MODAL ── */}
+      {orderModal && (
+        <div className="fixed inset-0 bg-black/60 flex items-start justify-center z-50 p-2 md:p-4 md:items-center"
+          onClick={e => { if (e.target === e.currentTarget) setOrderModal(null) }}>
+          <div className="bg-slate-800 rounded-3xl border border-slate-700 w-full max-w-2xl max-h-[95vh] overflow-y-auto">
+            <div className="p-6">
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-xl font-bold text-white">✏️ Επεξεργασία Παραγγελίας</h2>
+                <button onClick={() => setOrderModal(null)} className="text-slate-400 hover:text-white text-xl">×</button>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {/* Πελάτης */}
+                <div className="col-span-2">
+                  <label className={`block text-xs mb-1 ${orderErrors.client ? 'text-red-400' : 'text-slate-400'}`}>Πελάτης *</label>
+                  <input name="client" value={orderForm.client} onChange={handleOrderChange}
+                    className={`w-full bg-slate-700 border rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500 ${orderErrors.client ? 'border-red-500' : 'border-slate-600'}`} />
+                </div>
+                <OField label="Από" name="from" value={orderForm.from} onChange={handleOrderChange} />
+                <OField label="Προς" name="to" value={orderForm.to} onChange={handleOrderChange} />
+                <div>
+                  <label className="block text-xs text-slate-400 mb-1">Τύπος</label>
+                  <select name="pal" value={orderForm.pal} onChange={handleOrderChange}
+                    className="w-full bg-slate-700 border border-slate-600 rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500">
+                    {PAL_TYPES.map(p => <option key={p} value={p}>{p === 'E' ? 'EPAL' : p === 'B' ? 'Βιομ.' : p === 'P' ? 'Μισή' : p === 'M' ? 'Μέτρο' : 'Χύμα'}</option>)}
+                  </select>
+                </div>
+                <OField label="Τεμάχια" name="qty" type="number" value={orderForm.qty} onChange={handleOrderChange} />
+                <OField label="LDM" name="ldm" type="number" value={orderForm.ldm} onChange={handleOrderChange} />
+                <OField label="Βάρος (kg)" name="wgt" type="number" value={orderForm.wgt} onChange={handleOrderChange} />
+                <OField label="Ημ. Φόρτωσης" name="load_date" type="date" value={orderForm.load_date} onChange={handleOrderChange} />
+                <OField label="Ημ. Παράδοσης" name="delivery_date" type="date" value={orderForm.delivery_date} onChange={handleOrderChange} />
+                <OField label="Τιμή (€)" name="price" type="number" value={orderForm.price} onChange={handleOrderChange} />
+                <div>
+                  <label className="block text-xs text-slate-400 mb-1">Φορτηγό</label>
+                  <input name="truck" value={orderForm.truck} onChange={handleOrderChange}
+                    className="w-full bg-slate-700 border border-slate-600 rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500" />
+                </div>
+                <div>
+                  <label className="block text-xs text-slate-400 mb-1">Status</label>
+                  <select name="status" value={orderForm.status} onChange={handleOrderChange}
+                    className="w-full bg-slate-700 border border-slate-600 rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500">
+                    {STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                </div>
+                <div className="col-span-2">
+                  <label className="block text-xs text-slate-400 mb-1">Σημειώσεις</label>
+                  <textarea name="notes" value={orderForm.notes || ''} onChange={handleOrderChange} rows={2}
+                    className="w-full bg-slate-700 border border-slate-600 rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500 resize-none" />
+                </div>
+              </div>
+              <div className="flex gap-3 mt-6">
+                <button onClick={() => setOrderModal(null)} className="flex-1 bg-slate-700 hover:bg-slate-600 text-white py-2 rounded-xl text-sm">Ακύρωση</button>
+                <button onClick={saveOrder} disabled={orderSaving}
+                  className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white py-2 rounded-xl text-sm font-medium">
+                  {orderSaving ? 'Αποθήκευση...' : '💾 Αποθήκευση'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── ADD AVAIL MODAL ── */}
       {addModal && (
