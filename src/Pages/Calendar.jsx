@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
-import { format, startOfMonth, endOfMonth, startOfWeek, addDays, isSameMonth, isToday, parseISO, isSameDay } from 'date-fns'
+import { format, startOfMonth, endOfMonth, startOfWeek, addDays, isSameMonth, isToday, isSameDay } from 'date-fns'
 import { el } from 'date-fns/locale'
 
 const STATUS_COLORS = {
@@ -12,30 +12,40 @@ const STATUS_COLORS = {
 }
 
 export default function Calendar() {
-  const [orders, setOrders] = useState([])
-  const [payments, setPayments] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [current, setCurrent] = useState(new Date())
-  const [selected, setSelected] = useState(null)
+  const [orders, setOrders]       = useState([])
+  const [payments, setPayments]   = useState([])
+  const [availRecords, setAvailRecords] = useState([])
+  const [loading, setLoading]     = useState(true)
+  const [current, setCurrent]     = useState(new Date())
+  const [selected, setSelected]   = useState(null)
   const [showPayments, setShowPayments] = useState(true)
-  const [showOrders, setShowOrders] = useState(true)
+  const [showOrders, setShowOrders]     = useState(true)
+  const [showAvail, setShowAvail]       = useState(true)
 
   useEffect(() => { loadAll() }, [])
 
   async function loadAll() {
     setLoading(true)
-    const [{ data: ord }, { data: pay }] = await Promise.all([
-      supabase.from('orders').select('id,client,from,to,status,rdy,load_date,delivery_date').order('rdy'),
+    const [{ data: ord }, { data: pay }, { data: av }] = await Promise.all([
+      supabase.from('orders').select('id,client,from,to,status,rdy,load_date,delivery_date,truck').order('rdy'),
       supabase.from('payments').select('*').eq('paid', false).order('due_date'),
+      supabase.from('avail').select('*'),
     ])
     setOrders(ord || [])
     setPayments(pay || [])
+    setAvailRecords(av || [])
     setLoading(false)
   }
 
+  // Available trucks for a day: avail record with nt = 'Διαθέσιμο' AND date matches
+  function availForDay(date) {
+    const ds = format(date, 'yyyy-MM-dd')
+    return availRecords.filter(a => a.fr === ds && a.nt === 'Διαθέσιμο')
+  }
+
   const monthStart = startOfMonth(current)
-  const monthEnd = endOfMonth(current)
-  const gridStart = startOfWeek(monthStart, { weekStartsOn: 1 })
+  const monthEnd   = endOfMonth(current)
+  const gridStart  = startOfWeek(monthStart, { weekStartsOn: 1 })
   const days = []
   let d = gridStart
   while (d <= monthEnd || days.length % 7 !== 0) {
@@ -47,23 +57,27 @@ export default function Calendar() {
   function ordersForDay(date) {
     const ds = format(date, 'yyyy-MM-dd')
     return orders.filter(o => {
-      const rdy = o.rdy ? o.rdy.substring(0, 10) : null
-      const ld = o.load_date ? o.load_date.substring(0, 10) : null
-      const dd = o.delivery_date ? o.delivery_date.substring(0, 10) : null
+      const rdy = o.rdy?.substring(0, 10)
+      const ld  = o.load_date?.substring(0, 10)
+      const dd  = o.delivery_date?.substring(0, 10)
       return rdy === ds || ld === ds || dd === ds
     })
   }
 
   function paymentsForDay(date) {
     const ds = format(date, 'yyyy-MM-dd')
-    return payments.filter(p => p.due_date && p.due_date.substring(0, 10) === ds)
+    return payments.filter(p => p.due_date?.substring(0, 10) === ds)
   }
 
-  const selectedOrders = selected ? ordersForDay(selected) : []
+  const selectedOrders   = selected ? ordersForDay(selected) : []
   const selectedPayments = selected ? paymentsForDay(selected) : []
+  const selectedAvail    = selected ? availForDay(selected) : []
+
+  if (loading) return <div className="p-6 text-slate-400">Φόρτωση...</div>
 
   return (
     <div className="p-4 md:p-6 space-y-4">
+      {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <h1 className="text-2xl md:text-3xl font-bold text-white">📅 Ημερολόγιο</h1>
         <div className="flex items-center gap-2 flex-wrap">
@@ -75,6 +89,10 @@ export default function Calendar() {
           <button onClick={() => setShowPayments(v => !v)}
             className={`px-3 py-1.5 rounded-xl text-xs font-medium border transition-colors ${showPayments ? 'bg-purple-700 border-purple-500 text-white' : 'bg-slate-800 border-slate-600 text-slate-400'}`}>
             💰 Πληρωμές
+          </button>
+          <button onClick={() => setShowAvail(v => !v)}
+            className={`px-3 py-1.5 rounded-xl text-xs font-medium border transition-colors ${showAvail ? 'bg-green-700 border-green-500 text-white' : 'bg-slate-800 border-slate-600 text-slate-400'}`}>
+            🚛 Διαθέσιμα
           </button>
           <div className="w-px h-5 bg-slate-700" />
           <button onClick={() => setCurrent(d => new Date(d.getFullYear(), d.getMonth() - 1, 1))}
@@ -89,28 +107,28 @@ export default function Calendar() {
         </div>
       </div>
 
+      {/* Calendar grid */}
       <div className="bg-slate-800 border border-slate-700 rounded-3xl p-4">
         {/* Day headers */}
         <div className="grid grid-cols-7 mb-2">
-          {['Δευ', 'Τρί', 'Τετ', 'Πέμ', 'Παρ', 'Σάβ', 'Κυρ'].map(d => (
-            <div key={d} className="text-center text-slate-500 text-xs font-medium py-2">{d}</div>
+          {['Δευ', 'Τρί', 'Τετ', 'Πέμ', 'Παρ', 'Σάβ', 'Κυρ'].map(day => (
+            <div key={day} className="text-center text-slate-500 text-xs font-medium py-2">{day}</div>
           ))}
         </div>
 
-        {/* Calendar grid */}
         <div className="grid grid-cols-7 gap-1">
           {days.map((day, i) => {
-            const dayOrders = showOrders ? ordersForDay(day) : []
+            const dayOrders   = showOrders   ? ordersForDay(day)   : []
             const dayPayments = showPayments ? paymentsForDay(day) : []
-            const inMonth = isSameMonth(day, current)
-            const isSelected = selected && isSameDay(day, selected)
-            const hasPayment = dayPayments.length > 0
+            const dayAvail    = showAvail    ? availForDay(day)    : []
+            const inMonth     = isSameMonth(day, current)
+            const isSelected  = selected && isSameDay(day, selected)
 
             return (
               <button
                 key={i}
                 onClick={() => setSelected(isSelected ? null : day)}
-                className={`min-h-[56px] md:min-h-[76px] p-1 md:p-1.5 rounded-xl text-left transition-colors ${
+                className={`min-h-[56px] md:min-h-[80px] p-1 md:p-1.5 rounded-xl text-left transition-colors ${
                   isSelected ? 'bg-blue-900/50' : 'hover:bg-slate-700'
                 } ${!inMonth ? 'opacity-30' : ''} ${isToday(day) ? 'ring-2 ring-blue-500' : ''}`}
               >
@@ -126,13 +144,21 @@ export default function Calendar() {
                   {dayOrders.length > 2 && (
                     <div className="text-xs text-slate-500 pl-1">+{dayOrders.length - 2} παρ.</div>
                   )}
-                  {dayPayments.slice(0, 2).map(p => (
+                  {dayPayments.slice(0, 1).map(p => (
                     <div key={p.id} className="text-xs px-1 py-0.5 rounded bg-purple-800/80 text-purple-200 truncate">
                       💰 {p.client_name}
                     </div>
                   ))}
-                  {dayPayments.length > 2 && (
-                    <div className="text-xs text-slate-500 pl-1">+{dayPayments.length - 2} πλ.</div>
+                  {dayPayments.length > 1 && (
+                    <div className="text-xs text-slate-500 pl-1">+{dayPayments.length - 1} πλ.</div>
+                  )}
+                  {dayAvail.slice(0, 2).map(a => (
+                    <div key={a.id} className="text-xs px-1 py-0.5 rounded bg-green-900/60 text-green-300 truncate">
+                      🚛 {a.tr}
+                    </div>
+                  ))}
+                  {dayAvail.length > 2 && (
+                    <div className="text-xs text-slate-500 pl-1">+{dayAvail.length - 2} φορτ.</div>
                   )}
                 </div>
               </button>
@@ -147,9 +173,25 @@ export default function Calendar() {
           <h2 className="text-white font-bold">
             {format(selected, 'd MMMM yyyy', { locale: el })}
             <span className="ml-2 text-slate-400 text-sm font-normal">
-              {selectedOrders.length + selectedPayments.length} εγγραφές
+              {selectedOrders.length + selectedPayments.length + selectedAvail.length} εγγραφές
             </span>
           </h2>
+
+          {/* Available trucks */}
+          {showAvail && selectedAvail.length > 0 && (
+            <div>
+              <p className="text-slate-400 text-xs font-medium uppercase tracking-wide mb-2">🚛 Διαθέσιμα Φορτηγά</p>
+              <div className="flex flex-wrap gap-2">
+                {selectedAvail.map(a => (
+                  <div key={a.id} className="bg-green-900/30 border border-green-700/50 rounded-xl px-3 py-2 flex items-center gap-2">
+                    <span className="text-green-300 font-bold text-sm">{a.tr}</span>
+                    {a.ct && <span className="text-slate-400 text-xs">📍 {a.ct}</span>}
+                    {a.co && <span className="text-slate-500 text-xs italic">{a.co}</span>}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Orders */}
           {showOrders && selectedOrders.length > 0 && (
@@ -165,6 +207,9 @@ export default function Calendar() {
                       <p className="text-white text-sm font-medium truncate">{o.client}</p>
                       <p className="text-slate-400 text-xs">{o.from} → {o.to}</p>
                     </div>
+                    {o.truck && (
+                      <span className="text-slate-500 text-xs shrink-0">🚛 {o.truck}</span>
+                    )}
                   </div>
                 ))}
               </div>
@@ -191,7 +236,7 @@ export default function Calendar() {
             </div>
           )}
 
-          {selectedOrders.length === 0 && selectedPayments.length === 0 && (
+          {selectedOrders.length === 0 && selectedPayments.length === 0 && selectedAvail.length === 0 && (
             <p className="text-slate-500 text-sm">Δεν υπάρχουν εγγραφές</p>
           )}
         </div>
