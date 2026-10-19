@@ -38,6 +38,8 @@ export default function Calendar() {
   const [addModal, setAddModal]   = useState(null) // date
   const [addForm, setAddForm]     = useState({ truck: '', status: 'Διαθέσιμο', location: '', notes: '' })
   const [addSaving, setAddSaving] = useState(false)
+  const [truckSearch, setTruckSearch] = useState('')
+  const [truckOpen, setTruckOpen]     = useState(false)
 
   const navigate = useNavigate()
 
@@ -134,7 +136,9 @@ export default function Calendar() {
   // Open add avail modal for a date
   function openAddModal(date) {
     setAddModal(date)
-    setAddForm({ truck: trucks[0]?.tr || '', status: 'Διαθέσιμο', location: '', notes: '' })
+    setAddForm({ truck: '', status: 'Διαθέσιμο', location: '', notes: '' })
+    setTruckSearch('')
+    setTruckOpen(false)
   }
 
   async function saveAvail() {
@@ -368,28 +372,55 @@ export default function Calendar() {
               <p className="text-slate-400 text-sm">{format(addModal, 'EEEE d MMMM yyyy', { locale: el })}</p>
             </div>
 
-            {/* Truck selector */}
-            <div>
+            {/* Truck selector — searchable dropdown */}
+            <div className="relative">
               <label className="block text-xs text-slate-400 mb-2">Φορτηγό</label>
-              <div className="grid grid-cols-2 gap-2 max-h-40 overflow-y-auto">
-                {trucks.map(t => {
-                  const ds = format(addModal, 'yyyy-MM-dd')
-                  const { chip } = truckDayStatus(t.tr, ds)
-                  return (
-                    <button key={t.tr}
-                      onClick={() => setAddForm(f => ({ ...f, truck: t.tr }))}
-                      className={`py-2 px-3 rounded-xl text-sm border transition-colors text-left ${
-                        addForm.truck === t.tr
-                          ? 'bg-blue-600 border-blue-500 text-white font-bold'
-                          : 'bg-slate-700 text-slate-300 border-slate-600 hover:bg-slate-600'
-                      }`}
-                    >
-                      <div className="font-medium">{t.tr}</div>
-                      {t.driver && <div className="text-xs opacity-60 truncate">{t.driver}</div>}
-                    </button>
-                  )
-                })}
-              </div>
+              <button
+                type="button"
+                onClick={() => { setTruckOpen(o => !o); setTruckSearch('') }}
+                className={`w-full flex items-center justify-between px-3 py-2 rounded-xl border text-sm transition-colors ${
+                  addForm.truck ? 'bg-slate-700 border-blue-500 text-white' : 'bg-slate-700 border-slate-600 text-slate-400'
+                }`}
+              >
+                <span>{addForm.truck || 'Επιλογή φορτηγού...'}</span>
+                <span className="text-slate-500">{truckOpen ? '▲' : '▼'}</span>
+              </button>
+              {truckOpen && (
+                <div className="absolute z-10 mt-1 w-full bg-slate-800 border border-slate-600 rounded-xl shadow-xl overflow-hidden">
+                  <div className="p-2 border-b border-slate-700">
+                    <input
+                      autoFocus
+                      value={truckSearch}
+                      onChange={e => setTruckSearch(e.target.value)}
+                      placeholder="Αναζήτηση..."
+                      className="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-1.5 text-white text-sm focus:outline-none focus:border-blue-500"
+                    />
+                  </div>
+                  <div className="max-h-48 overflow-y-auto">
+                    {trucks
+                      .filter(t => t.tr.toLowerCase().includes(truckSearch.toLowerCase()) || (t.driver || '').toLowerCase().includes(truckSearch.toLowerCase()))
+                      .map(t => {
+                        const ds = format(addModal, 'yyyy-MM-dd')
+                        const { chip } = truckDayStatus(t.tr, ds)
+                        return (
+                          <button key={t.tr}
+                            onClick={() => { setAddForm(f => ({ ...f, truck: t.tr })); setTruckOpen(false) }}
+                            className={`w-full text-left px-3 py-2 flex items-center gap-3 hover:bg-slate-700 transition-colors ${addForm.truck === t.tr ? 'bg-blue-900/40' : ''}`}
+                          >
+                            <div className={`w-2 h-2 rounded-full shrink-0 ${chip.includes('green') ? 'bg-green-400' : chip.includes('red') ? 'bg-red-400' : chip.includes('orange') ? 'bg-orange-400' : 'bg-slate-400'}`} />
+                            <div>
+                              <div className="text-white text-sm font-medium">{t.tr}</div>
+                              {t.driver && <div className="text-slate-400 text-xs">{t.driver}</div>}
+                            </div>
+                          </button>
+                        )
+                      })}
+                    {trucks.filter(t => t.tr.toLowerCase().includes(truckSearch.toLowerCase()) || (t.driver || '').toLowerCase().includes(truckSearch.toLowerCase())).length === 0 && (
+                      <div className="px-3 py-4 text-slate-500 text-sm text-center">Δεν βρέθηκαν</div>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Status */}
