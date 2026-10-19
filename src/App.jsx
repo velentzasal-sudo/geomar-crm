@@ -11,6 +11,7 @@ import Firms from './Pages/Firms'
 import Calendar from './Pages/Calendar'
 import Weekly from './Pages/Weekly'
 import Avail from './Pages/Avail'
+import TruckHistory from './Pages/TruckHistory'
 
 export default function App() {
   const [session, setSession] = useState(undefined)
@@ -42,8 +43,9 @@ export default function App() {
           <Route path="firms"    element={<Firms />} />
           <Route path="calendar" element={<Calendar />} />
           <Route path="weekly"   element={<Weekly />} />
-          <Route path="avail"    element={<Avail />} />
-          <Route path="*"        element={<Navigate to="/" replace />} />
+          <Route path="avail"         element={<Avail />} />
+          <Route path="truck-history" element={<TruckHistory />} />
+          <Route path="*"             element={<Navigate to="/" replace />} />
         </Route>
       </Routes>
     </BrowserRouter>
