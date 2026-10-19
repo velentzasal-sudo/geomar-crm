@@ -34,8 +34,9 @@ export default function Clients() {
 
   async function handleSave() {
     setSaving(true)
+    const { id: _id, ...rest } = form
     const payload = {
-      ...form,
+      ...rest,
       total_debt: parseFloat(form.total_debt) || 0,
       monthly_card_repeat: parseInt(form.monthly_card_repeat) || null,
       next_card_date: form.next_card_date || null,

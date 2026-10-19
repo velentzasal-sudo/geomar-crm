@@ -31,10 +31,11 @@ export default function Firms() {
 
   async function handleSave() {
     setSaving(true)
+    const { id: _id, ...payload } = form
     if (editing) {
-      await supabase.from('firms').update(form).eq('id', editing)
+      await supabase.from('firms').update(payload).eq('id', editing)
     } else {
-      await supabase.from('firms').insert([form])
+      await supabase.from('firms').insert([payload])
     }
     setSaving(false)
     setShowModal(false)

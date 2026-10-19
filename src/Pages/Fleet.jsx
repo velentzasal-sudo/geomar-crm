@@ -36,7 +36,8 @@ export default function Fleet() {
 
   async function handleSave() {
     setSaving(true)
-    const payload = { ...form, tare: parseFloat(form.tare)||0, payload: parseFloat(form.payload)||0, ldm: parseFloat(form.ldm)||0 }
+    const { id: _id, ...rest } = form
+    const payload = { ...rest, tare: parseFloat(form.tare)||0, payload: parseFloat(form.payload)||0, ldm: parseFloat(form.ldm)||0 }
     let error
     if (editing) {
       const res = await supabase.from('trucks').update(payload).eq('id', editing)

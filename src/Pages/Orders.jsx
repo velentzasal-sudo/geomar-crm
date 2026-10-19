@@ -179,7 +179,8 @@ export default function Orders() {
 
   async function handleSave() {
     setSaving(true)
-    const payload = { ...form, qty: parseFloat(form.qty)||0, ldm: parseFloat(form.ldm)||0, wgt: parseFloat(form.wgt)||0, price: parseFloat(form.price)||0 }
+    const { id: _id, ...rest } = form
+    const payload = { ...rest, qty: parseFloat(form.qty)||0, ldm: parseFloat(form.ldm)||0, wgt: parseFloat(form.wgt)||0, price: parseFloat(form.price)||0 }
     if (editing) {
       await supabase.from('orders').update(payload).eq('id', editing)
     } else {
