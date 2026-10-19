@@ -244,7 +244,9 @@ export default function Orders() {
     const city = firm?.city || ''
     const country = firm?.country || ''
     const mapsQuery = [addr, city, country].filter(Boolean).join(', ')
-    const mapsUrl = mapsQuery ? `https://maps.google.com/?q=${encodeURIComponent(mapsQuery)}` : ''
+    const mapsUrl = firm?.maps_link
+      ? firm.maps_link
+      : mapsQuery ? `https://maps.google.com/?q=${encodeURIComponent(mapsQuery)}` : ''
     const rdy = o.rdy ? format(new Date(o.rdy), 'd MMM yyyy', { locale: el }) : '—'
     const msg = [
       '📦 *Ανάθεση Φορτίου*', '',

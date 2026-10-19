@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 
-const EMPTY = { name: '', street: '', num: '', tk: '', city: '', country: 'Ιταλία', contact: '', phone: '', email: '', notes: '' }
+const EMPTY = { name: '', street: '', num: '', tk: '', city: '', country: 'Ιταλία', contact: '', phone: '', email: '', maps_link: '', notes: '' }
 
 export default function Firms() {
   const [firms, setFirms] = useState([])
@@ -92,8 +92,9 @@ export default function Firms() {
                 </p>
               </div>
               <div className="flex gap-1 shrink-0">
-                <a href={mapsUrl(f)} target="_blank" rel="noopener noreferrer"
-                  className="p-1.5 rounded-lg hover:bg-slate-700 text-slate-400 hover:text-blue-400 text-sm">🗺️</a>
+                <a href={f.maps_link || mapsUrl(f)} target="_blank" rel="noopener noreferrer"
+                  className={`p-1.5 rounded-lg hover:bg-slate-700 text-sm ${f.maps_link ? 'text-green-400 hover:text-green-300' : 'text-slate-400 hover:text-blue-400'}`}
+                  title={f.maps_link ? 'Google Maps (custom link)' : 'Google Maps (αυτόματο)'}>🗺️</a>
                 {f.email && (
                   <a href={`mailto:${f.email}`}
                     className="p-1.5 rounded-lg hover:bg-slate-700 text-slate-400 hover:text-blue-400 text-sm">✉️</a>
@@ -121,6 +122,19 @@ export default function Firms() {
                 <FF label="Επαφή" name="contact" value={form.contact} onChange={handleChange} />
                 <FF label="Τηλέφωνο" name="phone" value={form.phone} onChange={handleChange} />
                 <FF label="Email" name="email" type="email" value={form.email} onChange={handleChange} />
+                <div className="col-span-2">
+                  <label className="block text-xs text-slate-400 mb-1">📍 Google Maps Link</label>
+                  <div className="flex gap-2">
+                    <input type="url" name="maps_link" value={form.maps_link || ''} onChange={handleChange}
+                      placeholder="https://maps.google.com/..."
+                      className="flex-1 bg-slate-700 border border-slate-600 rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500" />
+                    {form.maps_link && (
+                      <a href={form.maps_link} target="_blank" rel="noopener noreferrer"
+                        className="bg-slate-600 hover:bg-slate-500 text-white px-3 py-2 rounded-xl text-sm">🗺️</a>
+                    )}
+                  </div>
+                  <p className="text-slate-600 text-xs mt-1">Επικόλλησε το link από Google Maps — θα χρησιμοποιείται στο WhatsApp</p>
+                </div>
                 <div className="col-span-2">
                   <label className="block text-xs text-slate-400 mb-1">Σημειώσεις</label>
                   <textarea name="notes" value={form.notes || ''} onChange={handleChange} rows={2}
