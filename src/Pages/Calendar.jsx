@@ -217,6 +217,22 @@ export default function Calendar() {
       rdy: orderForm.rdy || null,
     }
     await supabase.from('orders').update(payload).eq('id', orderModal.id)
+
+    // Αν έχει φορτηγό + load_date, προσθέτουμε avail "Εν κινήσει" αν δεν υπάρχει
+    if (payload.truck && payload.load_date) {
+      const ds = payload.load_date
+      const existing = availRecords.find(a => a.tr === payload.truck && a.fr === ds)
+      if (!existing) {
+        await supabase.from('avail').insert([{
+          tr: payload.truck,
+          fr: ds,
+          nt: 'Εν κινήσει',
+          ct: payload.from || '',
+          co: payload.client || '',
+        }])
+      }
+    }
+
     setOrderSaving(false)
     setOrderModal(null)
     loadAll()
