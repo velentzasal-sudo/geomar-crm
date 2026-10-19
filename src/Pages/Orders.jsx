@@ -218,7 +218,16 @@ export default function Orders() {
     setErrors({})
     setSaving(true)
     const { id: _id, ...rest } = form
-    const payload = { ...rest, qty: parseFloat(form.qty)||0, ldm: parseFloat(form.ldm)||0, wgt: parseFloat(form.wgt)||0, price: parseFloat(form.price)||0 }
+    const payload = {
+      ...rest,
+      qty: parseFloat(form.qty)||0,
+      ldm: parseFloat(form.ldm)||0,
+      wgt: parseFloat(form.wgt)||0,
+      price: parseFloat(form.price)||0,
+      load_date: form.load_date || null,
+      delivery_date: form.delivery_date || null,
+      rdy: form.rdy || null,
+    }
     // auto-set status if truck assigned and status is Open
     if (payload.truck && payload.status === 'Open') {
       payload.status = 'Ανατεθειμένη'
