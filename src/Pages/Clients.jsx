@@ -139,7 +139,8 @@ export default function Clients() {
         if (found) {
           matched.push({ client: found, newDebt: debt, newNotes: notes, name, afm })
         } else {
-          unmatched.push({ name, afm: afmRaw, debt })
+          // Will be created as new client
+          unmatched.push({ name, afm: afmRaw, debt, notes })
         }
       })
 
@@ -152,16 +153,32 @@ export default function Clients() {
   async function confirmImport() {
     if (!importPreview) return
     setImporting(true)
+
+    // Update existing
     for (const item of importPreview.matched) {
       await supabase.from('clients').update({
         total_debt: item.newDebt,
         notes: item.newNotes || item.client.notes,
       }).eq('id', item.client.id)
     }
+
+    // Create new clients
+    if (importPreview.unmatched.length > 0) {
+      const newClients = importPreview.unmatched.map(item => ({
+        name: item.name,
+        afm: item.afm || '',
+        total_debt: item.debt || 0,
+        notes: item.notes || '',
+      }))
+      await supabase.from('clients').insert(newClients)
+    }
+
+    const updated = importPreview.matched.length
+    const created = importPreview.unmatched.length
     setImporting(false)
     setImportPreview(null)
     loadAll()
-    alert(`✅ Ενημερώθηκαν ${importPreview.matched.length} πελάτες`)
+    alert(`✅ Ενημερώθηκαν ${updated} πελάτες\n➕ Δημιουργήθηκαν ${created} νέοι`)
   }
 
   // ── PAYMENTS ──────────────────────────────────────────────────
@@ -326,12 +343,16 @@ export default function Clients() {
 
                 {importPreview.unmatched.length > 0 && (
                   <div>
-                    <h3 className="text-orange-400 font-medium mb-2">⚠️ Δεν αναγνωρίστηκαν ({importPreview.unmatched.length}) — δεν θα ενημερωθούν</h3>
-                    <div className="space-y-1 max-h-32 overflow-y-auto">
+                    <h3 className="text-blue-400 font-bold mb-1">➕ Νέοι πελάτες ({importPreview.unmatched.length})</h3>
+                    <p className="text-slate-500 text-xs mb-2">Δεν βρέθηκαν στη βάση — θα δημιουργηθούν.</p>
+                    <div className="space-y-1 max-h-48 overflow-y-auto">
                       {importPreview.unmatched.map((item, i) => (
-                        <div key={i} className="bg-slate-700/50 rounded-xl px-3 py-2 flex justify-between text-sm">
-                          <span className="text-slate-300 truncate">{item.name || '—'}</span>
-                          <span className="text-slate-400 shrink-0 ml-2">ΑΦΜ: {item.afm || '—'}</span>
+                        <div key={i} className="bg-blue-900/20 border border-blue-800/40 rounded-xl px-3 py-2 flex justify-between text-sm">
+                          <span className="text-blue-200 font-medium truncate">{item.name || '—'}</span>
+                          <span className="text-blue-400 shrink-0 ml-2 text-xs">
+                            {item.afm ? `ΑΦΜ: ${item.afm} · ` : ''}
+                            €{(item.debt || 0).toLocaleString('el-GR', { minimumFractionDigits: 2 })}
+                          </span>
                         </div>
                       ))}
                     </div>
@@ -346,7 +367,7 @@ export default function Clients() {
                 </button>
                 <button onClick={confirmImport} disabled={importing}
                   className="flex-1 bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white py-2 rounded-xl text-sm font-medium">
-                  {importing ? 'Ενημέρωση...' : `✅ Ενημέρωση ${importPreview.matched.length} πελατών`}
+                  {importing ? 'Επεξεργασία...' : `✅ ${importPreview.matched.length} ενημέρωση · ${importPreview.unmatched.length} νέοι`}
                 </button>
               </div>
             </div>
