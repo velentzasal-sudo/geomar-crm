@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { format, startOfMonth, endOfMonth, startOfWeek, addDays, isSameMonth, isToday, isSameDay } from 'date-fns'
 import { el } from 'date-fns/locale'
@@ -21,6 +22,7 @@ export default function Calendar() {
   const [showPayments, setShowPayments] = useState(true)
   const [showOrders, setShowOrders]     = useState(true)
   const [showAvail, setShowAvail]       = useState(true)
+  const navigate = useNavigate()
 
   useEffect(() => { loadAll() }, [])
 
@@ -187,6 +189,13 @@ export default function Calendar() {
                     <span className="text-green-300 font-bold text-sm">{a.tr}</span>
                     {a.ct && <span className="text-slate-400 text-xs">📍 {a.ct}</span>}
                     {a.co && <span className="text-slate-500 text-xs italic">{a.co}</span>}
+                    <button
+                      onClick={() => navigate(`/fleet?truck=${encodeURIComponent(a.tr)}`)}
+                      className="ml-1 px-2 py-0.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-300 hover:text-white text-xs transition-colors"
+                      title="Άνοιγμα στον Στόλο"
+                    >
+                      🚚 Στόλος →
+                    </button>
                   </div>
                 ))}
               </div>
