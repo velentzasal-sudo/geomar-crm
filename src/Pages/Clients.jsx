@@ -17,6 +17,7 @@ export default function Clients() {
   const [form, setForm] = useState(EMPTY)
   const [saving, setSaving] = useState(false)
   const [showDebt, setShowDebt] = useState(false)
+  const [sortBy, setSortBy] = useState('debt_desc') // 'debt_desc','debt_asc','name_asc','name_desc'
 
   // Import state
   const [importPreview, setImportPreview] = useState(null) // {matched, unmatched}
@@ -218,7 +219,13 @@ export default function Clients() {
     const matchSearch = !q || [c.name, c.city, c.afm, c.phone].some(v => v?.toLowerCase().includes(q))
     const matchDebt = !showDebt || (parseFloat(c.total_debt) > 0)
     return matchSearch && matchDebt
-  }).sort((a, b) => (parseFloat(b.total_debt) || 0) - (parseFloat(a.total_debt) || 0))
+  }).sort((a, b) => {
+    if (sortBy === 'debt_desc') return (parseFloat(b.total_debt) || 0) - (parseFloat(a.total_debt) || 0)
+    if (sortBy === 'debt_asc')  return (parseFloat(a.total_debt) || 0) - (parseFloat(b.total_debt) || 0)
+    if (sortBy === 'name_asc')  return (a.name || '').localeCompare(b.name || '', 'el')
+    if (sortBy === 'name_desc') return (b.name || '').localeCompare(a.name || '', 'el')
+    return 0
+  })
 
   const totalDebt = clients.reduce((s, c) => s + (parseFloat(c.total_debt) || 0), 0)
 
@@ -268,6 +275,22 @@ export default function Clients() {
           <input type="checkbox" checked={showDebt} onChange={e => setShowDebt(e.target.checked)} className="rounded" />
           Μόνο με υπόλοιπο
         </label>
+        {/* Sort buttons */}
+        <div className="flex gap-1">
+          {[
+            { key: 'name_asc',  label: 'Α→Ω' },
+            { key: 'name_desc', label: 'Ω→Α' },
+            { key: 'debt_desc', label: '€↓' },
+            { key: 'debt_asc',  label: '€↑' },
+          ].map(s => (
+            <button key={s.key} onClick={() => setSortBy(s.key)}
+              className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors ${
+                sortBy === s.key ? 'bg-blue-600 text-white' : 'bg-slate-700 text-slate-400 hover:bg-slate-600 hover:text-white'
+              }`}>
+              {s.label}
+            </button>
+          ))}
+        </div>
         <div className="ml-auto text-slate-400 text-sm">{filtered.length} πελάτες</div>
       </div>
 
