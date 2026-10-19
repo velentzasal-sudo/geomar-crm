@@ -10,6 +10,7 @@ const links = [
   { to: '/firms',     label: 'Φίρμες',       icon: '🏭' },
   { to: '/calendar',  label: 'Ημερολόγιο',   icon: '📅' },
   { to: '/weekly',    label: 'Εβδ. Πλάνος',  icon: '📋' },
+  { to: '/avail',     label: 'Διαθεσιμότητα', icon: '🟢' },
 ]
 
 export default function Sidebar({ user }) {
