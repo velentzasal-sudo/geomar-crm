@@ -82,19 +82,23 @@ export default function Fleet() {
 
   useEffect(() => { loadAll() }, [])
 
+  const [ferries, setFerries] = useState([])
+
   async function loadAll() {
     setLoading(true)
-    const [{ data: t }, { data: a }, { data: o }] = await Promise.all([
+    const [{ data: t }, { data: a }, { data: o }, { data: f }] = await Promise.all([
       supabase.from('trucks').select('*').order('tr'),
       supabase.from('avail').select('*').order('created_at', { ascending: false }),
       supabase.from('orders')
         .select('id,client,from,to,status,rdy,load_date,delivery_date,truck,ldm,qty,pal,notes')
         .order('load_date', { ascending: false }),
+      supabase.from('ferries').select('truck,total_cost,departure,route,company'),
     ])
     const trucks = t || []
     setTrucks(trucks)
     setAvail(a || [])
     setAllOrders(o || [])
+    setFerries(f || [])
     setLoading(false)
 
     // Deep-link: ?truck=ΑΒ-1234 → expand that card
@@ -293,6 +297,31 @@ export default function Fleet() {
                     )}
 
                     {t.notes && <p className="text-slate-500 text-xs italic">{t.notes}</p>}
+
+                    {/* Κόστος καραβιών */}
+                    {(() => {
+                      const tFerries = ferries.filter(f => f.truck === t.tr)
+                      if (tFerries.length === 0) return null
+                      const total = tFerries.reduce((s, f) => s + (parseFloat(f.total_cost)||0), 0)
+                      return (
+                        <div className="bg-blue-900/20 border border-blue-700/40 rounded-xl px-3 py-2 space-y-1">
+                          <p className="text-blue-300 text-xs font-medium">⛴️ Κόστος Καραβιών</p>
+                          <div className="flex items-center justify-between">
+                            <span className="text-slate-400 text-xs">{tFerries.length} κρατήσεις</span>
+                            <span className="text-green-400 font-bold text-sm">{total.toLocaleString('el-GR', { minimumFractionDigits: 2 })} €</span>
+                          </div>
+                          {['Hellenic Ferry Services','Blue Star'].map(c => {
+                            const ct = tFerries.filter(f => f.company === c).reduce((s,f) => s+(parseFloat(f.total_cost)||0), 0)
+                            return ct > 0 ? (
+                              <div key={c} className="flex items-center justify-between text-xs">
+                                <span className="text-slate-500">{c}</span>
+                                <span className="text-slate-300">{ct.toLocaleString('el-GR', { minimumFractionDigits: 2 })} €</span>
+                              </div>
+                            ) : null
+                          })}
+                        </div>
+                      )
+                    })()}
                   </div>
                 )}
               </div>
