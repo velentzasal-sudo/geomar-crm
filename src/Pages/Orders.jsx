@@ -1,5 +1,7 @@
 import { useEffect, useState, useRef } from 'react'
 import { supabase } from '../lib/supabase'
+import { format } from 'date-fns'
+import { el } from 'date-fns/locale'
 
 // Searchable dropdown component
 function SearchableSelect({ label, value, onChange, options, placeholder = '— Αναζήτηση —' }) {
@@ -7,7 +9,6 @@ function SearchableSelect({ label, value, onChange, options, placeholder = '— 
   const [open, setOpen] = useState(false)
   const ref = useRef(null)
 
-  // Close on outside click
   useEffect(() => {
     function handleClick(e) {
       if (ref.current && !ref.current.contains(e.target)) setOpen(false)
@@ -16,7 +17,6 @@ function SearchableSelect({ label, value, onChange, options, placeholder = '— 
     return () => document.removeEventListener('mousedown', handleClick)
   }, [])
 
-  // Sync query with value when modal opens/closes
   useEffect(() => {
     setQuery(value || '')
   }, [value])
@@ -95,6 +95,7 @@ const EMPTY = {
 
 export default function Orders() {
   const [orders, setOrders] = useState([])
+  const [trucks, setTrucks] = useState([])
   const [firms, setFirms] = useState([])
   const [clients, setClients] = useState([])
   const [loading, setLoading] = useState(true)
@@ -105,17 +106,21 @@ export default function Orders() {
   const [filterStatus, setFilterStatus] = useState('all')
   const [saving, setSaving] = useState(false)
   const [showDelivered, setShowDelivered] = useState(false)
+  const [showDispatch, setShowDispatch] = useState(false)
 
   useEffect(() => { loadAll() }, [])
   useEffect(() => { loadOrders() }, [showDelivered])
 
   async function loadAll() {
-    const [{ data: f }, { data: c }] = await Promise.all([
+    const [{ data: f }, { data: c }, { data: t }] = await Promise.all([
       supabase.from('firms').select('id,name,street,num,city,country').order('name'),
       supabase.from('clients').select('id,name,city,address').order('name'),
+      supabase.from('trucks').select('*').order('tr'),
     ])
     setFirms(f || [])
     setClients(c || [])
+    setTrucks(t || [])
+    loadOrders()
   }
 
   async function loadOrders() {
@@ -177,10 +182,18 @@ export default function Orders() {
     })
   }
 
+  function handleSelectTruck(value) {
+    setForm(f => ({ ...f, truck: value }))
+  }
+
   async function handleSave() {
     setSaving(true)
     const { id: _id, ...rest } = form
     const payload = { ...rest, qty: parseFloat(form.qty)||0, ldm: parseFloat(form.ldm)||0, wgt: parseFloat(form.wgt)||0, price: parseFloat(form.price)||0 }
+    // auto-set status if truck assigned and status is Open
+    if (payload.truck && payload.status === 'Open') {
+      payload.status = 'Ανατεθειμένη'
+    }
     if (editing) {
       await supabase.from('orders').update(payload).eq('id', editing)
     } else {
@@ -204,6 +217,49 @@ export default function Orders() {
     setOrders(prev => prev.map(x => x.id === o.id ? { ...x, status: next } : x))
   }
 
+  async function unassignTruck(o) {
+    await supabase.from('orders').update({ truck: '', status: 'Open' }).eq('id', o.id)
+    loadOrders()
+  }
+
+  function openWhatsApp(o) {
+    const truck = trucks.find(t => t.tr === o.truck)
+    const firm = firms.find(f => f.name?.toLowerCase() === o.firm?.toLowerCase())
+    const phone = truck?.phone?.replace(/\D/g, '') || ''
+    const addr = firm ? [firm.street, firm.num].filter(Boolean).join(' ') : ''
+    const city = firm?.city || ''
+    const country = firm?.country || ''
+    const mapsQuery = [addr, city, country].filter(Boolean).join(', ')
+    const mapsUrl = mapsQuery ? `https://maps.google.com/?q=${encodeURIComponent(mapsQuery)}` : ''
+    const rdy = o.rdy ? format(new Date(o.rdy), 'd MMM yyyy', { locale: el }) : '—'
+    const msg = [
+      '📦 *Ανάθεση Φορτίου*', '',
+      '🏭 *Φίρμα:* ' + (o.firm || '—'),
+      addr ? '🏠 *Οδός:* ' + addr : null,
+      city ? '🏙 *Πόλη:* ' + city : null,
+      country ? '🌍 *Χώρα:* ' + country : null,
+      mapsUrl ? '📍 *Maps:* ' + mapsUrl : null, '',
+      '📋 *Φορτίο*',
+      '📬 *Παραλήπτης:* ' + (o.to || '—'),
+      '📅 *Ετοιμότητα:* ' + rdy,
+      '🔢 *Παλέτες:* ' + (o.qty || '—') + ' ' + (o.pal || ''),
+      '📐 *LDM:* ' + (parseFloat(o.ldm) || 0).toFixed(2),
+      o.wgt ? '⚖️ *Βάρος:* ' + o.wgt + ' kg' : null,
+      o.tmp ? '🌡 *Θερμοκρασία:* ' + o.tmp + '°C' : null,
+    ].filter(Boolean).join('\n')
+    const url = phone
+      ? `https://wa.me/${phone}?text=${encodeURIComponent(msg)}`
+      : `https://wa.me/?text=${encodeURIComponent(msg)}`
+    window.open(url, '_blank')
+  }
+
+  // LDM per truck (for active non-Delivered orders)
+  function truckLdm(truckName) {
+    return orders
+      .filter(o => o.truck === truckName && o.status !== 'Delivered')
+      .reduce((s, o) => s + (parseFloat(o.ldm) || 0), 0)
+  }
+
   const filtered = orders.filter(o => {
     const matchStatus = filterStatus === 'all' || o.status === filterStatus
     const q = search.toLowerCase()
@@ -214,15 +270,109 @@ export default function Orders() {
   const totalLdm = filtered.reduce((s, o) => s + (parseFloat(o.ldm) || 0), 0)
   const ldmPct = Math.min(100, (totalLdm / TLDM) * 100)
 
+  // Trucks with active orders for dispatch view
+  const activeTrucks = trucks.filter(t =>
+    orders.some(o => o.truck === t.tr && o.status !== 'Delivered')
+  )
+  const unassignedOrders = orders.filter(o => !o.truck || o.status === 'Open')
+
   return (
     <div className="p-6 space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-3">
         <h1 className="text-3xl font-bold text-white">📦 Παραγγελίες</h1>
-        <button onClick={openNew} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl font-medium text-sm">
-          + Νέα Παραγγελία
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={() => setShowDispatch(v => !v)}
+            className={`px-4 py-2 rounded-xl text-sm font-medium border transition-colors ${showDispatch ? 'bg-orange-600 border-orange-500 text-white' : 'bg-slate-800 border-slate-600 text-slate-400 hover:text-white'}`}
+          >
+            🗂 Dispatch {showDispatch ? '▲' : '▼'}
+          </button>
+          <button onClick={openNew} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl font-medium text-sm">
+            + Νέα Παραγγελία
+          </button>
+        </div>
       </div>
 
+      {/* ── DISPATCH PANEL ── */}
+      {showDispatch && (
+        <div className="bg-slate-800 border border-orange-700/40 rounded-3xl p-5 space-y-4">
+          <h2 className="text-orange-300 font-bold text-sm uppercase tracking-wide">🗂 Dispatch — Ανάθεση & Στόλος</h2>
+
+          {/* Unassigned orders */}
+          {unassignedOrders.length > 0 && (
+            <div>
+              <p className="text-slate-400 text-xs font-medium mb-2">Αναθέτεσαι ({unassignedOrders.length})</p>
+              <div className="space-y-1.5">
+                {unassignedOrders.map(o => (
+                  <div key={o.id} className="bg-slate-700 rounded-xl px-3 py-2 flex items-center gap-2">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-white text-sm font-medium truncate">{o.client}</p>
+                      <p className="text-slate-400 text-xs">{o.from} → {o.to} · {o.qty} {o.pal} · {(parseFloat(o.ldm)||0).toFixed(2)} LDM</p>
+                    </div>
+                    <button
+                      onClick={() => openEdit(o)}
+                      className="shrink-0 text-xs bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-xl"
+                    >
+                      Ανάθεση →
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Truck LDM summary */}
+          {trucks.length > 0 && (
+            <div>
+              <p className="text-slate-400 text-xs font-medium mb-2">Στόλος — LDM</p>
+              <div className="grid grid-cols-1 gap-2">
+                {trucks.map(t => {
+                  const ldm = truckLdm(t.tr)
+                  const cap = parseFloat(t.ldm) || TLDM
+                  const pct = Math.min(100, (ldm / cap) * 100)
+                  const over = ldm > cap
+                  const tOrders = orders.filter(o => o.truck === t.tr && o.status !== 'Delivered')
+                  return (
+                    <div key={t.id} className={`bg-slate-700 rounded-2xl px-4 py-3 border ${over ? 'border-red-700' : 'border-slate-600'}`}>
+                      <div className="flex items-center gap-3 mb-2">
+                        <span className="text-white font-bold text-sm">🚚 {t.tr}</span>
+                        <span className="text-slate-400 text-xs">{t.driver}</span>
+                        <span className={`ml-auto text-xs font-bold ${over ? 'text-red-400' : 'text-green-400'}`}>
+                          {ldm.toFixed(2)} / {cap} LDM {over ? '⚠️' : ''}
+                        </span>
+                        {t.phone && (
+                          <span className="text-slate-500 text-xs">{t.phone}</span>
+                        )}
+                      </div>
+                      <div className="w-full bg-slate-600 rounded-full h-1.5 mb-2">
+                        <div
+                          className={`h-1.5 rounded-full transition-all ${over ? 'bg-red-500' : pct >= 80 ? 'bg-orange-500' : 'bg-green-500'}`}
+                          style={{ width: `${Math.min(100, pct)}%` }}
+                        />
+                      </div>
+                      {tOrders.length > 0 && (
+                        <div className="space-y-1">
+                          {tOrders.map(o => (
+                            <div key={o.id} className="flex items-center gap-2 bg-slate-600/50 rounded-lg px-2 py-1">
+                              <span className={`text-xs px-1.5 py-0.5 rounded ${STATUS_COLORS[o.status] || ''}`}>{o.status}</span>
+                              <span className="text-white text-xs flex-1 truncate">{o.client}</span>
+                              <span className="text-slate-400 text-xs">{(parseFloat(o.ldm)||0).toFixed(2)} LDM</span>
+                              <button onClick={() => openWhatsApp(o)} className="text-green-400 hover:text-green-300 text-xs" title="WhatsApp">📲</button>
+                              <button onClick={() => unassignTruck(o)} className="text-slate-500 hover:text-red-400 text-xs" title="Αφαίρεση">✕</button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Filters */}
       <div className="flex flex-wrap gap-3 items-center">
         <input
           value={search}
@@ -291,6 +441,9 @@ export default function Orders() {
                   <div className="text-green-400 text-sm font-medium shrink-0">€{o.price}</div>
                 )}
                 <div className="flex gap-1 shrink-0">
+                  {o.truck && (
+                    <button onClick={() => openWhatsApp(o)} className="p-1.5 rounded-lg hover:bg-slate-700 text-slate-400 hover:text-green-400 text-sm" title="WhatsApp">📲</button>
+                  )}
                   <button onClick={() => openEdit(o)} className="p-1.5 rounded-lg hover:bg-slate-700 text-slate-400 hover:text-white text-sm">✏️</button>
                   <button onClick={() => handleDelete(o.id)} className="p-1.5 rounded-lg hover:bg-red-900/40 text-slate-400 hover:text-red-400 text-sm">🗑️</button>
                 </div>
@@ -308,7 +461,7 @@ export default function Orders() {
 
               <div className="grid grid-cols-2 gap-4">
 
-                {/* Πελάτης searchable dropdown */}
+                {/* Πελάτης */}
                 <div className="col-span-2">
                   <SearchableSelect
                     label="Πελάτης"
@@ -319,7 +472,7 @@ export default function Orders() {
                   />
                 </div>
 
-                {/* Φίρμα searchable dropdown */}
+                {/* Φίρμα */}
                 <div>
                   <SearchableSelect
                     label="Φίρμα (αποστολή)"
@@ -332,14 +485,12 @@ export default function Orders() {
 
                 <Field label="Παραλήπτης" name="recip" value={form.recip} onChange={handleChange} />
 
-                {/* Από — αυτόματο από φίρμα */}
                 <div>
                   <label className="block text-xs text-slate-400 mb-1">Από (διεύθυνση)</label>
                   <input name="from" value={form.from} onChange={handleChange}
                     className="w-full bg-slate-700 border border-slate-600 rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500" />
                 </div>
 
-                {/* Προς — αυτόματο από πελάτη */}
                 <div>
                   <label className="block text-xs text-slate-400 mb-1">Προς (διεύθυνση)</label>
                   <input name="to" value={form.to} onChange={handleChange}
@@ -360,7 +511,29 @@ export default function Orders() {
                 <Field label="Θερμοκρασία" name="tmp" value={form.tmp} onChange={handleChange} />
                 <Field label="Έτοιμο" name="rdy" type="date" value={form.rdy} onChange={handleChange} />
                 <Field label="Τιμή (€)" name="price" type="number" value={form.price} onChange={handleChange} />
-                <Field label="Φορτηγό" name="truck" value={form.truck} onChange={handleChange} />
+
+                {/* Φορτηγό — searchable */}
+                <div>
+                  <SearchableSelect
+                    label="🚚 Φορτηγό"
+                    value={form.truck}
+                    onChange={handleSelectTruck}
+                    options={trucks.map(t => t.tr + (t.driver ? ' · ' + t.driver : ''))}
+                    placeholder="Επιλογή φορτηγού..."
+                  />
+                  {form.truck && (() => {
+                    const trName = form.truck.split(' · ')[0]
+                    const ldm = truckLdm(trName)
+                    const cap = parseFloat(trucks.find(t => t.tr === trName)?.ldm) || TLDM
+                    const rem = cap - ldm
+                    const fits = rem >= (parseFloat(form.ldm) || 0)
+                    return (
+                      <p className={`text-xs mt-1 ${fits ? 'text-green-400' : 'text-red-400'}`}>
+                        Διαθέσιμο: {rem.toFixed(2)} LDM {fits ? '✓' : '⚠️ Δεν χωράει'}
+                      </p>
+                    )
+                  })()}
+                </div>
 
                 <div>
                   <label className="block text-xs text-slate-400 mb-1">Status</label>
