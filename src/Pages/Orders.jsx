@@ -528,7 +528,6 @@ export default function Orders() {
                 <Field label="LDM" name="ldm" type="number" value={form.ldm} onChange={handleChange} error={errors.ldm ? '↑ ή τεμάχια' : ''} />
                 <Field label="Βάρος (kg)" name="wgt" type="number" value={form.wgt} onChange={handleChange} />
                 <Field label="Θερμοκρασία" name="tmp" value={form.tmp} onChange={handleChange} />
-                <Field label="Έτοιμο" name="rdy" type="date" value={form.rdy} onChange={handleChange} />
                 <Field label="Ημ. Φόρτωσης *" name="load_date" type="date" value={form.load_date} onChange={handleChange} error={errors.load_date} />
                 <Field label="Ημ. Παράδοσης" name="delivery_date" type="date" value={form.delivery_date} onChange={handleChange} />
                 <Field label="Τιμή (€)" name="price" type="number" value={form.price} onChange={handleChange} />
