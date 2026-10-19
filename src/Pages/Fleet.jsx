@@ -37,14 +37,27 @@ export default function Fleet() {
   async function handleSave() {
     setSaving(true)
     const payload = { ...form, tare: parseFloat(form.tare)||0, payload: parseFloat(form.payload)||0, ldm: parseFloat(form.ldm)||0 }
+    let error
     if (editing) {
-      await supabase.from('trucks').update(payload).eq('id', editing)
+      const res = await supabase.from('trucks').update(payload).eq('id', editing)
+      error = res.error
+      if (res.error) {
+        alert('Σφάλμα αποθήκευσης: ' + res.error.message + '\nCode: ' + res.error.code)
+        console.error('Supabase update error:', res.error)
+      }
     } else {
-      await supabase.from('trucks').insert([payload])
+      const res = await supabase.from('trucks').insert([payload])
+      error = res.error
+      if (res.error) {
+        alert('Σφάλμα εισαγωγής: ' + res.error.message + '\nCode: ' + res.error.code)
+        console.error('Supabase insert error:', res.error)
+      }
     }
     setSaving(false)
-    setShowModal(false)
-    loadAll()
+    if (!error) {
+      setShowModal(false)
+      loadAll()
+    }
   }
 
   async function handleDelete(id) {
