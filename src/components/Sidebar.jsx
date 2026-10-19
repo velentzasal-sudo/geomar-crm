@@ -4,13 +4,12 @@ import { supabase } from '../lib/supabase'
 const links = [
   { to: '/',          label: 'Dashboard',    icon: '📊' },
   { to: '/orders',    label: 'Παραγγελίες',  icon: '📦' },
-  { to: '/dispatch',  label: 'Dispatch',     icon: '🗂' },
+  { to: '/avail',     label: 'Διαθεσιμότητα', icon: '🟢' },
   { to: '/fleet',     label: 'Στόλος',       icon: '🚚' },
   { to: '/clients',   label: 'Πελάτες',      icon: '👥' },
   { to: '/firms',     label: 'Φίρμες',       icon: '🏭' },
   { to: '/calendar',  label: 'Ημερολόγιο',   icon: '📅' },
   { to: '/weekly',    label: 'Εβδ. Πλάνος',  icon: '📋' },
-  { to: '/avail',     label: 'Διαθεσιμότητα', icon: '🟢' },
 ]
 
 export default function Sidebar({ user }) {
