@@ -63,9 +63,9 @@ export default function Calendar() {
   const selectedPayments = selected ? paymentsForDay(selected) : []
 
   return (
-    <div className="p-6 space-y-4">
+    <div className="p-4 md:p-6 space-y-4">
       <div className="flex items-center justify-between flex-wrap gap-3">
-        <h1 className="text-3xl font-bold text-white">📅 Ημερολόγιο</h1>
+        <h1 className="text-2xl md:text-3xl font-bold text-white">📅 Ημερολόγιο</h1>
         <div className="flex items-center gap-2 flex-wrap">
           {/* Toggles */}
           <button onClick={() => setShowOrders(v => !v)}
@@ -110,7 +110,7 @@ export default function Calendar() {
               <button
                 key={i}
                 onClick={() => setSelected(isSelected ? null : day)}
-                className={`min-h-[76px] p-1.5 rounded-xl text-left transition-colors ${
+                className={`min-h-[56px] md:min-h-[76px] p-1 md:p-1.5 rounded-xl text-left transition-colors ${
                   isSelected ? 'bg-blue-900/50' : 'hover:bg-slate-700'
                 } ${!inMonth ? 'opacity-30' : ''} ${isToday(day) ? 'ring-2 ring-blue-500' : ''}`}
               >

@@ -235,17 +235,17 @@ export default function Clients() {
   const pendingPayments = clientPayments.filter(p => !p.paid)
 
   return (
-    <div className="p-6 space-y-4">
-      <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-bold text-white">👥 Πελάτες</h1>
+    <div className="p-4 md:p-6 space-y-4">
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <h1 className="text-2xl md:text-3xl font-bold text-white">👥 Πελάτες</h1>
         <div className="flex gap-2">
           <button onClick={() => fileRef.current?.click()}
-            className="bg-green-700 hover:bg-green-600 text-white px-4 py-2 rounded-xl font-medium text-sm">
-            📥 Import Excel
+            className="bg-green-700 hover:bg-green-600 text-white px-3 py-2 rounded-xl font-medium text-sm">
+            📥 Import
           </button>
           <input ref={fileRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={handleFileChange} />
-          <button onClick={openNew} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl font-medium text-sm">
-            + Νέος Πελάτης
+          <button onClick={openNew} className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded-xl font-medium text-sm">
+            + Νέος
           </button>
         </div>
       </div>
@@ -267,10 +267,10 @@ export default function Clients() {
       </div>
 
       {/* Filters */}
-      <div className="flex gap-3 items-center flex-wrap">
+      <div className="flex gap-2 items-center flex-wrap">
         <input value={search} onChange={e => setSearch(e.target.value)}
           placeholder="🔍 Αναζήτηση..."
-          className="bg-slate-800 border border-slate-700 rounded-xl px-4 py-2 text-white text-sm w-56 focus:outline-none focus:border-blue-500" />
+          className="bg-slate-800 border border-slate-700 rounded-xl px-4 py-2 text-white text-sm w-full sm:w-56 focus:outline-none focus:border-blue-500" />
         <label className="flex items-center gap-2 text-slate-400 text-sm cursor-pointer">
           <input type="checkbox" checked={showDebt} onChange={e => setShowDebt(e.target.checked)} className="rounded" />
           Μόνο με υπόλοιπο
@@ -345,8 +345,8 @@ export default function Clients() {
 
       {/* ── IMPORT PREVIEW MODAL ── */}
       {importPreview && (
-        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
-          <div className="bg-slate-800 rounded-3xl border border-slate-700 w-full max-w-2xl max-h-[85vh] overflow-y-auto">
+        <div className="fixed inset-0 bg-black/70 flex items-end sm:items-center justify-center z-50 p-0 sm:p-4">
+          <div className="bg-slate-800 rounded-t-3xl sm:rounded-3xl border border-slate-700 w-full sm:max-w-2xl max-h-[90vh] overflow-y-auto">
             <div className="p-6">
               <h2 className="text-xl font-bold text-white mb-2">📥 Προεπισκόπηση Import</h2>
               <p className="text-slate-400 text-sm mb-5">Έλεγξε τα δεδομένα πριν αποθηκευτούν.</p>
@@ -400,8 +400,8 @@ export default function Clients() {
 
       {/* ── CLIENT DETAIL MODAL ── */}
       {detailClient && (
-        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
-          <div className="bg-slate-800 rounded-3xl border border-slate-700 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+        <div className="fixed inset-0 bg-black/70 flex items-end sm:items-center justify-center z-50 p-0 sm:p-4">
+          <div className="bg-slate-800 rounded-t-3xl sm:rounded-3xl border border-slate-700 w-full sm:max-w-2xl max-h-[92vh] overflow-y-auto">
             <div className="p-6 space-y-5">
               {/* Header */}
               <div className="flex items-start justify-between">
@@ -534,11 +534,11 @@ export default function Clients() {
 
       {/* ── EDIT / NEW MODAL ── */}
       {showModal && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
-          <div className="bg-slate-800 rounded-3xl border border-slate-700 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-            <div className="p-6">
+        <div className="fixed inset-0 bg-black/60 flex items-end sm:items-center justify-center z-50 p-0 sm:p-4">
+          <div className="bg-slate-800 rounded-t-3xl sm:rounded-3xl border border-slate-700 w-full sm:max-w-2xl max-h-[92vh] overflow-y-auto">
+            <div className="p-5 md:p-6">
               <h2 className="text-xl font-bold text-white mb-6">{editing ? '✏️ Επεξεργασία' : '➕ Νέος Πελάτης'}</h2>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <CField label="Επωνυμία" name="name" value={form.name} onChange={handleChange} className="col-span-2" />
                 <CField label="ΑΦΜ" name="afm" value={form.afm} onChange={handleChange} />
                 <CField label="Πόλη" name="city" value={form.city} onChange={handleChange} />

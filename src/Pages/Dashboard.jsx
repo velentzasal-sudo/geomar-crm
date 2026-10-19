@@ -68,12 +68,12 @@ export default function Dashboard() {
   const hasAlerts = cardsOverdue.length > 0 || overduePayments.length > 0
 
   return (
-    <div className="p-5 space-y-4 max-w-5xl">
+    <div className="p-4 md:p-5 space-y-4 max-w-5xl mx-auto">
 
       {/* Header */}
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-white">Dashboard</h1>
-        <p className="text-slate-500 text-sm">{format(today, 'EEEE d MMMM yyyy', { locale: el })}</p>
+        <h1 className="text-xl md:text-2xl font-bold text-white">Dashboard</h1>
+        <p className="text-slate-500 text-xs md:text-sm">{format(today, 'EEE d MMM yyyy', { locale: el })}</p>
       </div>
 
       {/* ── RED ALERTS ── */}
@@ -83,14 +83,14 @@ export default function Dashboard() {
           <div className="space-y-1.5">
             {cardsOverdue.map(c => (
               <div key={c.id} className="flex items-center justify-between bg-red-900/30 rounded-xl px-3 py-2">
-                <span className="text-white text-sm">📅 Καρτέλα — <span className="font-semibold">{c.name}</span></span>
-                <span className="text-red-400 text-xs font-medium">{format(parseISO(c.next_card_date), 'd MMM', { locale: el })}</span>
+                <span className="text-white text-sm">📅 <span className="font-semibold">{c.name}</span></span>
+                <span className="text-red-400 text-xs font-medium shrink-0 ml-2">{format(parseISO(c.next_card_date), 'd MMM', { locale: el })}</span>
               </div>
             ))}
             {overduePayments.map(p => (
               <div key={p.id} className="flex items-center justify-between bg-red-900/30 rounded-xl px-3 py-2">
-                <span className="text-white text-sm">💰 Πληρωμή — <span className="font-semibold">{p.client_name}</span></span>
-                <span className="text-red-400 text-xs font-medium">€{(parseFloat(p.amount)||0).toLocaleString('el-GR')} · {format(parseISO(p.due_date), 'd MMM', { locale: el })}</span>
+                <span className="text-white text-sm">💰 <span className="font-semibold">{p.client_name}</span></span>
+                <span className="text-red-400 text-xs font-medium shrink-0 ml-2">€{(parseFloat(p.amount)||0).toLocaleString('el-GR')} · {format(parseISO(p.due_date), 'd MMM', { locale: el })}</span>
               </div>
             ))}
           </div>
@@ -111,14 +111,14 @@ export default function Dashboard() {
           <div className="space-y-1.5">
             {cardsSoon.map(c => (
               <div key={c.id} className="flex justify-between bg-slate-800 rounded-xl px-3 py-2">
-                <span className="text-slate-200 text-sm">📅 {c.name}</span>
-                <span className="text-amber-400 text-xs">{format(parseISO(c.next_card_date), 'EEE d MMM', { locale: el })}</span>
+                <span className="text-slate-200 text-sm truncate">📅 {c.name}</span>
+                <span className="text-amber-400 text-xs shrink-0 ml-2">{format(parseISO(c.next_card_date), 'EEE d MMM', { locale: el })}</span>
               </div>
             ))}
             {soonPayments.map(p => (
               <div key={p.id} className="flex justify-between bg-slate-800 rounded-xl px-3 py-2">
-                <span className="text-slate-200 text-sm">💰 {p.client_name}</span>
-                <span className="text-amber-400 text-xs">€{(parseFloat(p.amount)||0).toLocaleString('el-GR')} · {format(parseISO(p.due_date), 'EEE d MMM', { locale: el })}</span>
+                <span className="text-slate-200 text-sm truncate">💰 {p.client_name}</span>
+                <span className="text-amber-400 text-xs shrink-0 ml-2">€{(parseFloat(p.amount)||0).toLocaleString('el-GR')} · {format(parseISO(p.due_date), 'EEE d MMM', { locale: el })}</span>
               </div>
             ))}
           </div>
@@ -126,14 +126,14 @@ export default function Dashboard() {
       )}
 
       {/* ── BOTTOM: MEMO + ORDERS ── */}
-      <div className="grid grid-cols-5 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
         {/* Memo */}
-        <div className="col-span-2 bg-slate-800 rounded-2xl p-4 border border-slate-700 flex flex-col">
+        <div className="md:col-span-2 bg-slate-800 rounded-2xl p-4 border border-slate-700 flex flex-col">
           <h2 className="text-sm font-bold text-white mb-2">📌 Σημείωμα</h2>
           <textarea
             value={memo}
             onChange={e => setMemo(e.target.value)}
-            rows={6}
+            rows={5}
             placeholder="Σημειώσεις ημέρας..."
             className="flex-1 w-full bg-slate-700 rounded-xl p-3 text-white placeholder-slate-500 resize-none focus:outline-none focus:ring-1 focus:ring-blue-500 text-sm"
           />
@@ -144,7 +144,7 @@ export default function Dashboard() {
         </div>
 
         {/* Recent orders */}
-        <div className="col-span-3 bg-slate-800 rounded-2xl p-4 border border-slate-700">
+        <div className="md:col-span-3 bg-slate-800 rounded-2xl p-4 border border-slate-700">
           <h2 className="text-sm font-bold text-white mb-2">📦 Ανοιχτές Παραγγελίες</h2>
           {loading ? (
             <p className="text-slate-500 text-sm">Φόρτωση...</p>
@@ -174,10 +174,10 @@ function Stat({ icon, label, value, color }) {
   const ring = { blue: 'border-blue-700/50', orange: 'border-orange-700/50', green: 'border-green-700/50' }
   const num  = { blue: 'text-blue-400',      orange: 'text-orange-400',      green: 'text-green-400' }
   return (
-    <div className={`bg-slate-800 border ${ring[color]} rounded-2xl px-4 py-3 flex items-center gap-3`}>
-      <span className="text-xl">{icon}</span>
+    <div className={`bg-slate-800 border ${ring[color]} rounded-2xl px-3 py-3 flex items-center gap-2 md:gap-3`}>
+      <span className="text-lg md:text-xl">{icon}</span>
       <div>
-        <p className={`text-2xl font-bold leading-none ${num[color]}`}>{value}</p>
+        <p className={`text-xl md:text-2xl font-bold leading-none ${num[color]}`}>{value}</p>
         <p className="text-slate-500 text-xs mt-0.5">{label}</p>
       </div>
     </div>

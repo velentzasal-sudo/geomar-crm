@@ -277,9 +277,9 @@ export default function Orders() {
   const unassignedOrders = orders.filter(o => !o.truck || o.status === 'Open')
 
   return (
-    <div className="p-6 space-y-4">
+    <div className="p-4 md:p-6 space-y-4">
       <div className="flex items-center justify-between flex-wrap gap-3">
-        <h1 className="text-3xl font-bold text-white">📦 Παραγγελίες</h1>
+        <h1 className="text-2xl md:text-3xl font-bold text-white">📦 Παραγγελίες</h1>
         <div className="flex gap-2">
           <button
             onClick={() => setShowDispatch(v => !v)}
@@ -373,12 +373,12 @@ export default function Orders() {
       )}
 
       {/* Filters */}
-      <div className="flex flex-wrap gap-3 items-center">
+      <div className="flex flex-wrap gap-2 items-center">
         <input
           value={search}
           onChange={e => setSearch(e.target.value)}
           placeholder="🔍 Αναζήτηση..."
-          className="bg-slate-800 border border-slate-700 rounded-xl px-4 py-2 text-white text-sm w-56 focus:outline-none focus:border-blue-500"
+          className="bg-slate-800 border border-slate-700 rounded-xl px-4 py-2 text-white text-sm w-full sm:w-56 focus:outline-none focus:border-blue-500"
         />
         <select
           value={filterStatus}
@@ -454,12 +454,12 @@ export default function Orders() {
       )}
 
       {showModal && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
-          <div className="bg-slate-800 rounded-3xl border border-slate-700 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+        <div className="fixed inset-0 bg-black/60 flex items-start justify-center z-50 p-2 md:p-4 md:items-center">
+          <div className="bg-slate-800 rounded-3xl border border-slate-700 w-full max-w-2xl max-h-[95vh] md:max-h-[90vh] overflow-y-auto">
             <div className="p-6">
               <h2 className="text-xl font-bold text-white mb-6">{editing ? '✏️ Επεξεργασία' : '➕ Νέα Παραγγελία'}</h2>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
 
                 {/* Πελάτης */}
                 <div className="col-span-2">
