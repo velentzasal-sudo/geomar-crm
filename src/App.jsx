@@ -5,7 +5,6 @@ import Layout from './components/Layout'
 import Login from './Pages/Login'
 import Dashboard from './Pages/Dashboard'
 import Orders from './Pages/Orders'
-import Dispatch from './Pages/Dispatch'
 import Fleet from './Pages/Fleet'
 import Clients from './Pages/Clients'
 import Firms from './Pages/Firms'
@@ -38,7 +37,6 @@ export default function App() {
         <Route element={<Layout user={session.user} />}>
           <Route index element={<Dashboard />} />
           <Route path="orders"   element={<Orders />} />
-          <Route path="dispatch" element={<Dispatch />} />
           <Route path="fleet"    element={<Fleet />} />
           <Route path="clients"  element={<Clients />} />
           <Route path="firms"    element={<Firms />} />
