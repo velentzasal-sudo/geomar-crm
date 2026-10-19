@@ -222,24 +222,37 @@ export default function Calendar() {
     loadAll()
   }
 
-  // Open add avail modal for a date
-  function openAddModal(date) {
+  // Open add avail modal for a date (or edit existing)
+  function openAddModal(date, existing = null) {
     setAddModal(date)
-    setAddForm({ truck: '', status: 'Διαθέσιμο', location: '', notes: '' })
+    setAddForm(existing
+      ? { truck: existing.tr, status: existing.nt || 'Διαθέσιμο', location: existing.ct || '', notes: existing.co || '', _editId: existing.id }
+      : { truck: '', status: 'Διαθέσιμο', location: '', notes: '' }
+    )
     setTruckSearch('')
     setTruckOpen(false)
+  }
+
+  async function deleteAvail(availId) {
+    if (!window.confirm('Διαγραφή εγγραφής;')) return
+    await supabase.from('avail').delete().eq('id', availId)
+    loadAll()
   }
 
   async function saveAvail() {
     if (!addModal || !addForm.truck) return
     setAddSaving(true)
     const ds = format(addModal, 'yyyy-MM-dd')
-    const existing = availRecords.find(a => a.tr === addForm.truck && a.fr === ds)
-    const payload  = { tr: addForm.truck, fr: ds, nt: addForm.status, ct: addForm.location, co: addForm.notes }
-    if (existing) {
-      await supabase.from('avail').update(payload).eq('id', existing.id)
+    const payload = { tr: addForm.truck, fr: ds, nt: addForm.status, ct: addForm.location, co: addForm.notes }
+    if (addForm._editId) {
+      await supabase.from('avail').update(payload).eq('id', addForm._editId)
     } else {
-      await supabase.from('avail').insert([payload])
+      const existing = availRecords.find(a => a.tr === addForm.truck && a.fr === ds)
+      if (existing) {
+        await supabase.from('avail').update(payload).eq('id', existing.id)
+      } else {
+        await supabase.from('avail').insert([payload])
+      }
     }
     setAddSaving(false)
     setAddModal(null)
@@ -404,16 +417,29 @@ export default function Calendar() {
                       const { chip, label } = truckDayStatus(a.tr, ds)
                       return (
                         <div key={a.id} className={`border rounded-xl px-3 py-2 ${chip}`}>
-                          <div className="flex items-center justify-between">
+                          <div className="flex items-center justify-between gap-1">
                             <span className="font-bold text-sm">{a.tr}</span>
-                            <button
-                              onClick={() => navigate(`/fleet?truck=${encodeURIComponent(a.tr)}`)}
-                              className="px-2 py-0.5 rounded-lg bg-black/20 hover:bg-black/40 text-xs transition-colors"
-                            >🚚 →</button>
+                            <div className="flex items-center gap-1">
+                              <button
+                                onClick={() => openAddModal(selected, a)}
+                                className="px-2 py-0.5 rounded-lg bg-black/20 hover:bg-black/40 text-xs transition-colors"
+                                title="Επεξεργασία"
+                              >✏️</button>
+                              <button
+                                onClick={() => deleteAvail(a.id)}
+                                className="px-2 py-0.5 rounded-lg bg-black/20 hover:bg-red-900/60 text-xs transition-colors"
+                                title="Διαγραφή"
+                              >🗑️</button>
+                              <button
+                                onClick={() => navigate(`/fleet?truck=${encodeURIComponent(a.tr)}`)}
+                                className="px-2 py-0.5 rounded-lg bg-black/20 hover:bg-black/40 text-xs transition-colors"
+                              >🚚 →</button>
+                            </div>
                           </div>
                           <div className="text-xs opacity-70 mt-0.5 flex gap-2 flex-wrap">
                             <span>{a.nt}</span>
                             {a.ct && <span>📍 {a.ct}</span>}
+                            {a.co && <span>💬 {a.co}</span>}
                             {label && <span className="font-medium">{label}</span>}
                           </div>
                         </div>
@@ -580,7 +606,7 @@ export default function Calendar() {
           onClick={e => { if (e.target === e.currentTarget) setAddModal(null) }}>
           <div className="bg-slate-800 rounded-t-3xl sm:rounded-3xl border border-slate-700 w-full sm:max-w-sm p-6 space-y-4">
             <div>
-              <h2 className="text-lg font-bold text-white">+ Διαθεσιμότητα Φορτηγού</h2>
+              <h2 className="text-lg font-bold text-white">{addForm._editId ? '✏️ Επεξεργασία Διαθεσιμότητας' : '+ Διαθεσιμότητα Φορτηγού'}</h2>
               <p className="text-slate-400 text-sm">{format(addModal, 'EEEE d MMMM yyyy', { locale: el })}</p>
             </div>
 
