@@ -9,7 +9,7 @@ const links = [
   { to: '/clients',   label: 'Πελάτες',      icon: '👥' },
   { to: '/firms',     label: 'Φίρμες',       icon: '🏭' },
   { to: '/calendar',  label: 'Ημερολόγιο',   icon: '📅' },
-  { to: '/weekly',        label: 'Εβδ. Πλάνος',   icon: '📋' },
+  { to: '/weekly',        label: 'Εβδ. Πλάνο',   icon: '📋' },
 
 ]
 
