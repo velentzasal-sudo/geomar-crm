@@ -120,7 +120,7 @@ export default function Orders() {
   const [errors, setErrors] = useState({})
 
   useEffect(() => { loadAll() }, [])
-  useEffect(() => { loadOrders() }, [showDelivered])
+  useEffect(() => { if (!loading) loadOrders() }, [showDelivered])
 
   async function loadAll() {
     const [{ data: f }, { data: c }, { data: t }] = await Promise.all([
@@ -138,7 +138,8 @@ export default function Orders() {
     setLoading(true)
     let q = supabase.from('orders').select('*').order('created_at', { ascending: false })
     if (!showDelivered) q = q.not('status', 'eq', 'Delivered')
-    const { data } = await q
+    const { data, error } = await q
+    if (error) { console.error('loadOrders error:', error); setLoading(false); return }
     const loaded = data || []
     setOrders(loaded)
     setLoading(false)
@@ -148,7 +149,7 @@ export default function Orders() {
       const target = loaded.find(o => String(o.id) === String(openId))
       if (target) {
         openEdit(target)
-        setSearchParams({}) // clear the query param
+        setSearchParams({})
       }
     }
   }
@@ -223,13 +224,15 @@ export default function Orders() {
       payload.status = 'Ανατεθειμένη'
     }
     if (editing) {
-      await supabase.from('orders').update(payload).eq('id', editing)
+      const { error } = await supabase.from('orders').update(payload).eq('id', editing)
+      if (error) { console.error('Update error:', error); setSaving(false); return }
     } else {
-      await supabase.from('orders').insert([payload])
+      const { error } = await supabase.from('orders').insert([payload])
+      if (error) { console.error('Insert error:', error); setSaving(false); return }
     }
     setSaving(false)
     setShowModal(false)
-    loadOrders()
+    await loadOrders()
   }
 
   async function handleDelete(id) {
