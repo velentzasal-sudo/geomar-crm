@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { format, isToday, isFuture, isPast, parseISO, addDays } from 'date-fns'
 import { el } from 'date-fns/locale'
 
 export default function Dashboard() {
+  const navigate = useNavigate()
   const [orders, setOrders] = useState([])
   const [clients, setClients] = useState([])
   const [payments, setPayments] = useState([])
@@ -153,14 +155,18 @@ export default function Dashboard() {
           ) : (
             <div className="space-y-1.5 overflow-y-auto max-h-64">
               {orders.slice(0, 10).map(o => (
-                <div key={o.id} className="bg-slate-700 rounded-xl px-3 py-2 flex items-center gap-2">
+                <button
+                  key={o.id}
+                  onClick={() => navigate(`/orders?open=${o.id}`)}
+                  className="w-full bg-slate-700 hover:bg-slate-600 rounded-xl px-3 py-2 flex items-center gap-2 text-left transition-colors"
+                >
                   <StatusBadge status={o.status} />
                   <div className="flex-1 min-w-0">
                     <p className="text-white text-xs font-medium truncate">{o.client}</p>
                     <p className="text-slate-400 text-xs truncate">{o.from} → {o.to}</p>
                   </div>
                   <p className="text-slate-400 text-xs shrink-0">{o.qty} {o.pal === 'E' ? 'EPAL' : o.pal}</p>
-                </div>
+                </button>
               ))}
             </div>
           )}

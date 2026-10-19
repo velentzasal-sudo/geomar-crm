@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { format } from 'date-fns'
 import { el } from 'date-fns/locale'
@@ -94,6 +95,7 @@ const EMPTY = {
 }
 
 export default function Orders() {
+  const [searchParams, setSearchParams] = useSearchParams()
   const [orders, setOrders] = useState([])
   const [trucks, setTrucks] = useState([])
   const [firms, setFirms] = useState([])
@@ -128,8 +130,18 @@ export default function Orders() {
     let q = supabase.from('orders').select('*').order('created_at', { ascending: false })
     if (!showDelivered) q = q.not('status', 'eq', 'Delivered')
     const { data } = await q
-    setOrders(data || [])
+    const loaded = data || []
+    setOrders(loaded)
     setLoading(false)
+    // If ?open=<id> in URL, open that order's modal
+    const openId = searchParams.get('open')
+    if (openId) {
+      const target = loaded.find(o => String(o.id) === String(openId))
+      if (target) {
+        openEdit(target)
+        setSearchParams({}) // clear the query param
+      }
+    }
   }
 
   function calcLdm(pal, qty) {
@@ -183,7 +195,9 @@ export default function Orders() {
   }
 
   function handleSelectTruck(value) {
-    setForm(f => ({ ...f, truck: value }))
+    // store only the tr code (before ' · ')
+    const tr = value.split(' · ')[0].trim()
+    setForm(f => ({ ...f, truck: tr }))
   }
 
   async function handleSave() {
