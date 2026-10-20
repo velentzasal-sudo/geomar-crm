@@ -22,8 +22,8 @@ function calcLdmVal(pal, qty) {
 const STATUS_COLORS = {
   'Open':          'bg-blue-600',
   'Ανατεθειμένη': 'bg-orange-500',
-  'Μεταφορά':      'bg-green-600',
-  'Παράδοση':      'bg-purple-600',
+  'Μεταφορά':      'bg-orange-500', // legacy
+  'Παράδοση':      'bg-orange-500', // legacy
   'Delivered':     'bg-slate-600',
 }
 
