@@ -261,13 +261,15 @@ export default function Orders() {
     const { id: _id, _show2, ...rest } = form
     const payload = {
       ...rest,
-      qty: parseFloat(form.qty)||0,
-      ldm: parseFloat(form.ldm)||0,
-      wgt: parseFloat(form.wgt)||0,
-      price: parseFloat(form.price)||0,
-      load_date: form.load_date || null,
+      qty:   parseFloat(form.qty)   || 0,
+      ldm:   parseFloat(form.ldm)   || 0,
+      wgt:   parseFloat(form.wgt)   || 0,
+      price: parseFloat(form.price) || null,
+      qty2:  parseFloat(form.qty2)  || null,
+      load_date:     form.load_date     || null,
       delivery_date: form.delivery_date || null,
-      rdy: form.rdy || null,
+      rdy:           form.rdy           || null,
+      truck:         form.truck         || null,
     }
 
     // Κανόνας 1: Φορτηγό → Ανατεθειμένη
