@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { format } from 'date-fns'
+import { format, parseISO } from 'date-fns'
 import { el } from 'date-fns/locale'
 
 // Searchable dropdown component
@@ -128,6 +128,8 @@ export default function Orders() {
   const [showDelivered, setShowDelivered] = useState(false)
   const [showDispatch, setShowDispatch] = useState(false)
   const [errors, setErrors] = useState({})
+  const [filterMonth, setFilterMonth] = useState('')  // 'YYYY-MM' or ''
+  const [sortBy, setSortBy] = useState('created')     // 'created' | 'load_date' | 'delivery_date'
 
   useEffect(() => { loadAll() }, [])
   useEffect(() => { if (!loading) loadOrders() }, [showDelivered])
@@ -373,12 +375,30 @@ export default function Orders() {
       .reduce((s, o) => s + (parseFloat(o.ldm) || 0), 0)
   }
 
+  // Unique months from orders for filter dropdown
+  const availableMonths = [...new Set(
+    orders.map(o => (o.load_date || o.rdy || '').substring(0, 7)).filter(Boolean)
+  )].sort().reverse()
+
   const filtered = orders.filter(o => {
     const matchStatus = filterStatus === 'all' || o.status === filterStatus
     const matchTemp   = filterTemp === 'all' || o.tmp === filterTemp
     const q = search.toLowerCase()
     const matchSearch = !q || [o.client, o.firm, o.from, o.to, o.truck].some(v => v?.toLowerCase().includes(q))
-    return matchStatus && matchTemp && matchSearch
+    const matchMonth  = !filterMonth || (o.load_date || o.rdy || '').startsWith(filterMonth)
+    return matchStatus && matchTemp && matchSearch && matchMonth
+  }).sort((a, b) => {
+    if (sortBy === 'load_date') {
+      const da = a.load_date || a.rdy || ''
+      const db = b.load_date || b.rdy || ''
+      return db.localeCompare(da)
+    }
+    if (sortBy === 'delivery_date') {
+      const da = a.delivery_date || ''
+      const db = b.delivery_date || ''
+      return db.localeCompare(da)
+    }
+    return 0 // default: created_at order from DB
   })
 
   const totalLdm = filtered.reduce((s, o) => s + (parseFloat(o.ldm) || 0), 0)
@@ -510,6 +530,27 @@ export default function Orders() {
           <option value="all">Όλες θερμοκρασίες</option>
           {TEMP_OPTIONS.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
         </select>
+        <select
+          value={filterMonth}
+          onChange={e => setFilterMonth(e.target.value)}
+          className="bg-slate-800 border border-slate-700 rounded-xl px-4 py-2 text-white text-sm focus:outline-none focus:border-blue-500"
+        >
+          <option value="">Όλοι οι μήνες</option>
+          {availableMonths.map(m => {
+            const [y, mo] = m.split('-')
+            const label = format(new Date(parseInt(y), parseInt(mo)-1, 1), 'MMMM yyyy', { locale: el })
+            return <option key={m} value={m}>{label}</option>
+          })}
+        </select>
+        <select
+          value={sortBy}
+          onChange={e => setSortBy(e.target.value)}
+          className="bg-slate-800 border border-slate-700 rounded-xl px-4 py-2 text-white text-sm focus:outline-none focus:border-blue-500"
+        >
+          <option value="created">↕ Νεότερες πρώτα</option>
+          <option value="load_date">↕ Ημ. φόρτωσης</option>
+          <option value="delivery_date">↕ Ημ. παράδοσης</option>
+        </select>
         <label className="flex items-center gap-2 text-slate-400 text-sm cursor-pointer">
           <input type="checkbox" checked={showDelivered} onChange={e => setShowDelivered(e.target.checked)} className="rounded" />
           Παραδομένες
@@ -539,13 +580,20 @@ export default function Orders() {
                   <p className="text-white font-medium text-sm truncate">{o.client}</p>
                   <p className="text-slate-400 text-xs">{o.firm} · {o.from} → {o.to}</p>
                 </div>
-                <div className="text-right shrink-0">
+                <div className="text-right shrink-0 space-y-0.5">
                   <p className="text-slate-300 text-sm">{o.qty} {o.pal} · <span className={ldm > TLDM ? 'text-red-400' : 'text-slate-300'}>{ldm.toFixed(2)} LDM</span></p>
-                  <p className="text-slate-500 text-xs">
-                    {o.load_date ? `📦 ${o.load_date.substring(0,10)}` : o.rdy ? `🗓 ${o.rdy.substring(0,10)}` : ''}
-                    {o.delivery_date ? ` → 🏁 ${o.delivery_date.substring(0,10)}` : ''}
-                    {o.truck ? ` · 🚚 ${o.truck}` : ''}
-                  </p>
+                  <div className="flex items-center gap-1.5 justify-end text-xs">
+                    {(o.load_date || o.rdy) && (
+                      <span className="text-blue-300">📦 {(o.load_date || o.rdy).substring(0,10)}</span>
+                    )}
+                    {o.delivery_date && (
+                      <>
+                        <span className="text-slate-600">→</span>
+                        <span className="text-green-300">🏁 {o.delivery_date.substring(0,10)}</span>
+                      </>
+                    )}
+                  </div>
+                  {o.truck && <p className="text-slate-400 text-xs">🚚 {o.truck}</p>}
                 </div>
                 {o.price > 0 && (
                   <div className="text-green-400 text-sm font-medium shrink-0">€{o.price}</div>
