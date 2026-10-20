@@ -30,7 +30,6 @@ const STATUS_COLORS = {
 const AVAIL_STATUSES = [
   { key: 'Διαθέσιμο',  label: 'Διαθέσιμο',  color: 'bg-green-900/60 text-green-300 border-green-700' },
   { key: 'Εν κινήσει', label: 'Εν κινήσει', color: 'bg-cyan-900/60 text-cyan-300 border-cyan-700' },
-  { key: 'Ρεπό',       label: 'Ρεπό',        color: 'bg-slate-700 text-slate-400 border-slate-600' },
   { key: 'Service',    label: 'Service',     color: 'bg-red-900/60 text-red-300 border-red-700' },
 ]
 
