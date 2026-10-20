@@ -527,9 +527,9 @@ export default function Ferries() {
 
                   {dayBookings.slice(0, 3).map(b => (
                     <div key={b.id}
-                      className={`text-xs px-1 py-0.5 rounded border mb-0.5 flex items-center gap-1 min-w-0 ${COMPANY_COLORS[b.company] || 'bg-slate-700 border-slate-600 text-slate-300'}`}>
-                      <span className="font-bold shrink-0">{b.truck || '–'}</span>
-                      <span className="opacity-70 shrink-0">{shortRoute(b.route)}</span>
+                      className={`text-xs px-1 py-0.5 rounded border mb-0.5 flex items-center gap-1 overflow-hidden ${COMPANY_COLORS[b.company] || 'bg-slate-700 border-slate-600 text-slate-300'}`}>
+                      <span className="font-bold truncate max-w-[3rem]">{b.truck || '–'}</span>
+                      <span className="opacity-70 truncate shrink-0">{shortRoute(b.route)}</span>
                     </div>
                   ))}
                   {dayBookings.length > 3 && (
@@ -566,9 +566,9 @@ export default function Ferries() {
               bookingsForDay(selected).map(b => (
                 <div key={b.id} className={`border rounded-2xl px-3 py-3 space-y-2 ${COMPANY_COLORS[b.company] || 'bg-slate-800 border-slate-700'}`}>
                   <div className="flex items-start justify-between gap-2">
-                    <div>
-                      <p className="text-white font-semibold text-sm">{b.route}</p>
-                      <p className="text-xs opacity-70 mt-0.5">{b.company}</p>
+                    <div className="min-w-0">
+                      <p className="text-white font-semibold text-sm truncate">{b.route}</p>
+                      <p className="text-xs opacity-70 mt-0.5 truncate">{b.company}</p>
                     </div>
                     <div className="flex gap-1 shrink-0">
                       <button onClick={() => openEdit(b)}
@@ -688,7 +688,7 @@ export default function Ferries() {
               <div className="grid grid-cols-3 gap-3">
                 <div>
                   <label className="block text-xs text-slate-400 mb-1">Μέτρα</label>
-                  <input type="number" name="meters" value={form.meters} onChange={handleChange} step="0.5"
+                  <input type="number" name="meters" value={form.meters} onChange={handleChange} step="0.01"
                     className="w-full bg-slate-700 border border-slate-600 rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500" />
                 </div>
                 <div>
