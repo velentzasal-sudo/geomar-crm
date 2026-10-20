@@ -155,7 +155,9 @@ export default function Fleet() {
   async function handleSave() {
     setSaving(true)
     const { id: _id, ...rest } = form
-    const payload = { ...rest, tare: parseFloat(form.tare)||0, payload: parseFloat(form.payload)||0, ldm: parseFloat(form.ldm)||0 }
+    // tr = κύρια πινακίδα: αν υπάρχει τράκτορας χρησιμοποιείται αυτός, αλλιώς ο θάλαμος
+    const trVal = (form.tractor || form.trailer1 || form.tr || '').trim()
+    const payload = { ...rest, tr: trVal, tare: parseFloat(form.tare)||0, payload: parseFloat(form.payload)||0, ldm: parseFloat(form.ldm)||0 }
     let error
     if (editing) {
       const res = await supabase.from('trucks').update(payload).eq('id', editing)
@@ -501,7 +503,6 @@ export default function Fleet() {
                     )}
                   </div>
                 </div>
-                <TField label="Κωδικός (tr)" name="tr" value={form.tr} onChange={handleChange} className="col-span-2" />
                 <TField label="Οδηγός" name="driver" value={form.driver} onChange={handleChange} />
                 <TField label="Τηλέφωνο" name="phone" value={form.phone} onChange={handleChange} />
                 <TField label="Τάρα (kg)" name="tare" type="number" value={form.tare} onChange={handleChange} />
