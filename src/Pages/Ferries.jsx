@@ -245,18 +245,20 @@ const EMPTY = {
 }
 
 const COMPANY_COLORS = {
-  'Hellenic Sea Ferries': 'bg-blue-900/50 border-blue-700 text-blue-300',
-  'Blue Star':               'bg-cyan-900/50 border-cyan-700 text-cyan-300',
+  'Hellenic Sea Ferries': 'bg-orange-900/50 border-orange-600 text-orange-200',
+  'Blue Star':            'bg-blue-900/60 border-blue-500 text-blue-200',
 }
 
 export default function Ferries() {
-  const [bookings, setBookings] = useState([])
-  const [trucks, setTrucks]     = useState([])
-  const [loading, setLoading]   = useState(true)
-  const [current, setCurrent]   = useState(new Date())
-  const [selected, setSelected] = useState(null)
-  const [modal, setModal]       = useState(false)
-  const [form, setForm]         = useState(EMPTY)
+  const [bookings, setBookings]         = useState([])
+  const [trucks, setTrucks]             = useState([])
+  const [loading, setLoading]           = useState(true)
+  const [current, setCurrent]           = useState(new Date())
+  const [selected, setSelected]         = useState(null)
+  const [modal, setModal]               = useState(false)
+  const [form, setForm]                 = useState(EMPTY)
+  const [truckSearch, setTruckSearch]   = useState('')
+  const [truckDropOpen, setTruckDropOpen] = useState(false)
   const [editing, setEditing]   = useState(null)
   const [saving, setSaving]     = useState(false)
   const [importModal, setImportModal] = useState(false)
@@ -470,15 +472,15 @@ export default function Ferries() {
 
       {/* Σύνολα μήνα */}
       <div className="grid grid-cols-3 gap-3">
-        <div className="bg-blue-900/30 border border-blue-700/50 rounded-2xl px-4 py-3">
-          <p className="text-blue-300 text-xs font-medium uppercase tracking-wide mb-1">Hellenic</p>
+        <div className="bg-orange-900/30 border border-orange-600/50 rounded-2xl px-4 py-3">
+          <p className="text-orange-300 text-xs font-medium uppercase tracking-wide mb-1">Hellenic Sea Ferries</p>
           <p className="text-white text-xl font-bold">{companyTotals['Hellenic Sea Ferries'].toLocaleString('el-GR', { minimumFractionDigits: 2 })} €</p>
-          <p className="text-blue-400 text-xs mt-0.5">{monthBookings.filter(b => b.company === 'Hellenic Sea Ferries').length} κρατήσεις</p>
+          <p className="text-orange-400 text-xs mt-0.5">{monthBookings.filter(b => b.company === 'Hellenic Sea Ferries').length} κρατήσεις</p>
         </div>
-        <div className="bg-cyan-900/30 border border-cyan-700/50 rounded-2xl px-4 py-3">
-          <p className="text-cyan-300 text-xs font-medium uppercase tracking-wide mb-1">Blue Star</p>
+        <div className="bg-blue-900/40 border border-blue-500/50 rounded-2xl px-4 py-3">
+          <p className="text-blue-300 text-xs font-medium uppercase tracking-wide mb-1">Blue Star</p>
           <p className="text-white text-xl font-bold">{companyTotals['Blue Star'].toLocaleString('el-GR', { minimumFractionDigits: 2 })} €</p>
-          <p className="text-cyan-400 text-xs mt-0.5">{monthBookings.filter(b => b.company === 'Blue Star').length} κρατήσεις</p>
+          <p className="text-blue-400 text-xs mt-0.5">{monthBookings.filter(b => b.company === 'Blue Star').length} κρατήσεις</p>
         </div>
         <div className="bg-slate-800 border border-slate-600 rounded-2xl px-4 py-3">
           <p className="text-slate-400 text-xs font-medium uppercase tracking-wide mb-1">Σύνολο {format(current, 'MMM', { locale: el })}</p>
@@ -487,11 +489,14 @@ export default function Ferries() {
         </div>
       </div>
 
+      {/* Ημερολόγιο + Sidebar */}
+      <div className="flex gap-4 flex-1 min-h-0">
+
       {/* Ημερολόγιο */}
       {loading ? (
-        <div className="text-slate-400 py-8 text-center">Φόρτωση...</div>
+        <div className="text-slate-400 py-8 text-center flex-1">Φόρτωση...</div>
       ) : (
-        <div className="bg-slate-800/50 border border-slate-700 rounded-2xl overflow-hidden flex-1">
+        <div className="bg-slate-800/50 border border-slate-700 rounded-2xl overflow-hidden flex-1 min-w-0">
           {/* Επικεφαλίδες ημερών */}
           <div className="grid grid-cols-7 border-b border-slate-700">
             {DAY_LABELS.map(l => (
@@ -539,7 +544,7 @@ export default function Ferries() {
 
       {/* Sidebar: λεπτομέρειες επιλεγμένης μέρας */}
       {selected && (
-        <div className="fixed inset-y-0 right-0 w-80 bg-slate-900 border-l border-slate-700 z-30 flex flex-col shadow-2xl">
+        <div className="w-72 shrink-0 bg-slate-800/50 border border-slate-700 rounded-2xl flex flex-col overflow-hidden">
           <div className="flex items-center justify-between px-4 py-3 border-b border-slate-700">
             <div>
               <p className="text-white font-semibold text-sm">{format(selected, 'EEEE d MMMM', { locale: el })}</p>
@@ -554,12 +559,12 @@ export default function Ferries() {
             </div>
           </div>
 
-          <div className="flex-1 overflow-y-auto p-4 space-y-3">
+          <div className="flex-1 overflow-y-auto p-3 space-y-3">
             {bookingsForDay(selected).length === 0 ? (
               <p className="text-slate-500 text-sm text-center py-8">Δεν υπάρχουν κρατήσεις</p>
             ) : (
               bookingsForDay(selected).map(b => (
-                <div key={b.id} className={`border rounded-2xl px-4 py-3 space-y-2 ${COMPANY_COLORS[b.company] || 'bg-slate-800 border-slate-700'}`}>
+                <div key={b.id} className={`border rounded-2xl px-3 py-3 space-y-2 ${COMPANY_COLORS[b.company] || 'bg-slate-800 border-slate-700'}`}>
                   <div className="flex items-start justify-between gap-2">
                     <div>
                       <p className="text-white font-semibold text-sm">{b.route}</p>
@@ -585,6 +590,8 @@ export default function Ferries() {
           </div>
         </div>
       )}
+
+      </div>{/* end flex row */}
 
       {/* Modal κράτησης */}
       {modal && (
@@ -640,14 +647,41 @@ export default function Ferries() {
                 )}
               </div>
 
-              {/* Φορτηγό */}
-              <div>
+              {/* Φορτηγό — searchable */}
+              <div className="relative">
                 <label className="block text-xs text-slate-400 mb-1">Φορτηγό</label>
-                <select name="truck" value={form.truck} onChange={handleChange}
-                  className="w-full bg-slate-700 border border-slate-600 rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500">
-                  <option value="">— Χωρίς φορτηγό —</option>
-                  {trucks.map(t => <option key={t.tr} value={t.tr}>{t.tr}{t.driver ? ` · ${t.driver}` : ''}</option>)}
-                </select>
+                <input
+                  type="text"
+                  value={truckSearch || form.truck}
+                  onFocus={() => { setTruckSearch(''); setTruckDropOpen(true) }}
+                  onChange={e => { setTruckSearch(e.target.value); setTruckDropOpen(true) }}
+                  onBlur={() => setTimeout(() => setTruckDropOpen(false), 150)}
+                  placeholder="Αναζήτηση πινακίδας..."
+                  className="w-full bg-slate-700 border border-slate-600 rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500"
+                />
+                {truckDropOpen && (
+                  <div className="absolute z-10 mt-1 w-full bg-slate-800 border border-slate-600 rounded-xl shadow-xl max-h-48 overflow-y-auto">
+                    <div
+                      className="px-3 py-2 text-sm text-slate-400 hover:bg-slate-700 cursor-pointer"
+                      onMouseDown={() => { setForm(f => ({ ...f, truck: '' })); setTruckSearch(''); setTruckDropOpen(false) }}>
+                      — Χωρίς φορτηγό —
+                    </div>
+                    {trucks
+                      .filter(t => !truckSearch || t.tr.toLowerCase().includes(truckSearch.toLowerCase()) || (t.driver || '').toLowerCase().includes(truckSearch.toLowerCase()))
+                      .map(t => (
+                        <div key={t.tr}
+                          className="px-3 py-2 text-sm text-white hover:bg-slate-700 cursor-pointer flex justify-between"
+                          onMouseDown={() => { setForm(f => ({ ...f, truck: t.tr })); setTruckSearch(''); setTruckDropOpen(false) }}>
+                          <span className="font-medium">{t.tr}</span>
+                          {t.driver && <span className="text-slate-400 text-xs">{t.driver}</span>}
+                        </div>
+                      ))
+                    }
+                    {trucks.filter(t => !truckSearch || t.tr.toLowerCase().includes(truckSearch.toLowerCase())).length === 0 && (
+                      <div className="px-3 py-2 text-sm text-slate-500 italic">Δεν βρέθηκε</div>
+                    )}
+                  </div>
+                )}
               </div>
 
               {/* Μέτρα / €/μ / Σύνολο */}
