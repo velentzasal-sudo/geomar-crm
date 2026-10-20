@@ -352,24 +352,47 @@ export default function Fleet() {
                         {t.notes && <p className="text-slate-500 text-xs italic">{t.notes}</p>}
 
                         {(() => {
-                          const tFerries = ferries.filter(f => normPlate(f.truck) === normPlate(t.tr))
+                          const tFerries = ferries.filter(f => normPlate(f.truck) === normPlate(t.tr) && f.total_cost)
                           if (tFerries.length === 0) return null
-                          const total = tFerries.reduce((s, f) => s + (parseFloat(f.total_cost)||0), 0)
+                          // Group by month
+                          const byMonth = {}
+                          tFerries.forEach(f => {
+                            const m = (f.departure || '').substring(0, 7)
+                            if (!m) return
+                            if (!byMonth[m]) byMonth[m] = []
+                            byMonth[m].push(f)
+                          })
+                          const months = Object.keys(byMonth).sort().reverse().slice(0, 6)
+                          if (months.length === 0) return null
                           return (
-                            <div className="bg-blue-900/20 border border-blue-700/40 rounded-xl px-3 py-2 space-y-1">
-                              <p className="text-blue-300 text-xs font-medium">⛴️ Κόστος Καραβιών</p>
-                              <div className="flex items-center justify-between">
-                                <span className="text-slate-400 text-xs">{tFerries.length} κρατήσεις</span>
-                                <span className="text-green-400 font-bold text-sm">{total.toLocaleString('el-GR', { minimumFractionDigits: 2 })} €</span>
-                              </div>
-                              {['Hellenic Sea Ferries','Blue Star'].map(c => {
-                                const ct = tFerries.filter(f => f.company === c).reduce((s,f) => s+(parseFloat(f.total_cost)||0), 0)
-                                return ct > 0 ? (
-                                  <div key={c} className="flex items-center justify-between text-xs">
-                                    <span className="text-slate-500">{c}</span>
-                                    <span className="text-slate-300">{ct.toLocaleString('el-GR', { minimumFractionDigits: 2 })} €</span>
+                            <div className="bg-blue-900/20 border border-blue-700/40 rounded-xl px-3 py-2 space-y-2">
+                              <p className="text-blue-300 text-xs font-medium">⛴️ Εισιτήρια ανά Μήνα</p>
+                              {months.map(m => {
+                                const mFerries = byMonth[m]
+                                const total = mFerries.reduce((s, f) => s + (parseFloat(f.total_cost)||0), 0)
+                                const [yr, mo] = m.split('-')
+                                const label = new Date(parseInt(yr), parseInt(mo)-1, 1)
+                                  .toLocaleDateString('el-GR', { month: 'long', year: 'numeric' })
+                                return (
+                                  <div key={m} className="bg-slate-900/40 rounded-lg px-2.5 py-2 space-y-1">
+                                    <div className="flex items-center justify-between">
+                                      <span className="text-slate-300 text-xs font-medium capitalize">{label}</span>
+                                      <span className="text-green-400 font-bold text-sm">{total.toLocaleString('el-GR', { minimumFractionDigits: 2 })} €</span>
+                                    </div>
+                                    {['Hellenic Sea Ferries','Blue Star'].map(c => {
+                                      const ct = mFerries.filter(f => f.company === c).reduce((s,f) => s+(parseFloat(f.total_cost)||0), 0)
+                                      return ct > 0 ? (
+                                        <div key={c} className="flex items-center justify-between text-xs pl-1">
+                                          <span className="text-slate-500">{c}</span>
+                                          <span className="text-slate-400">{ct.toLocaleString('el-GR', { minimumFractionDigits: 2 })} €</span>
+                                        </div>
+                                      ) : null
+                                    })}
+                                    <div className="flex items-center justify-between text-xs pl-1">
+                                      <span className="text-slate-600">{mFerries.length} εισιτήρια</span>
+                                    </div>
                                   </div>
-                                ) : null
+                                )
                               })}
                             </div>
                           )
