@@ -75,7 +75,7 @@ function SearchableSelect({ label, value, onChange, options, placeholder = '— 
   )
 }
 
-const STATUSES = ['Open', 'Ανατεθειμένη', 'Μεταφορά', 'Παράδοση', 'Delivered']
+const STATUSES = ['Open', 'Ανατεθειμένη', 'Delivered']
 const PAL_TYPES = ['E', 'B', 'P', 'M', 'χύμα']
 const LDM_FACTORS = { E: 0.40, B: 0.50, P: 0.60, M: 1.00 }
 const TLDM = 13.20
@@ -83,16 +83,17 @@ const TLDM = 13.20
 const STATUS_COLORS = {
   'Open':          'bg-blue-900/50 text-blue-300 border-blue-700',
   'Ανατεθειμένη': 'bg-orange-900/50 text-orange-300 border-orange-700',
-  'Μεταφορά':      'bg-green-900/50 text-green-300 border-green-700',
-  'Παράδοση':      'bg-purple-900/50 text-purple-300 border-purple-700',
   'Delivered':     'bg-slate-700 text-slate-400 border-slate-600',
 }
 
 const EMPTY = {
   client:'', firm:'', from:'', to:'', recip:'',
   pal:'E', qty:'', ldm:'', wgt:'', tmp:'',
+  pal2:'E', qty2:'',
   rdy:'', load_date:'', delivery_date:'', price:'', notes:'', status:'Open', truck:'',
 }
+
+const PAL_LABEL = { E: 'EPAL', B: 'Βιομ.', P: 'Μισή', M: 'Μέτρο', χύμα: 'Χύμα' }
 
 function validate(form) {
   const errors = {}
@@ -170,17 +171,32 @@ export default function Orders() {
 
   function openEdit(o) {
     setEditing(o.id)
-    setForm({ ...o })
+    setForm({ ...o, _show2: !!(o.qty2) })
     setErrors({})
     setShowModal(true)
+  }
+
+  function calcTotalLdm(pal, qty, pal2, qty2) {
+    const l1 = parseFloat(calcLdm(pal, qty)) || 0
+    const l2 = parseFloat(calcLdm(pal2, qty2)) || 0
+    const total = l1 + l2
+    return total > 0 ? total.toFixed(2) : ''
   }
 
   function handleChange(e) {
     const { name, value } = e.target
     setForm(f => {
       const next = { ...f, [name]: value }
-      if (name === 'qty' || name === 'pal') {
-        next.ldm = calcLdm(next.pal, next.qty)
+      if (['qty','pal','qty2','pal2'].includes(name)) {
+        next.ldm = calcTotalLdm(next.pal, next.qty, next.pal2, next.qty2)
+      }
+      // Status → Open: αφαίρεση φορτηγού
+      if (name === 'status' && value === 'Open') {
+        next.truck = ''
+      }
+      // Status → Ανατεθειμένη χωρίς φορτηγό: πίσω σε Open
+      if (name === 'status' && value === 'Ανατεθειμένη' && !f.truck) {
+        next.status = 'Open'
       }
       return next
     })
@@ -207,9 +223,23 @@ export default function Orders() {
   }
 
   function handleSelectTruck(value) {
-    // store only the tr code (before ' · ')
     const tr = value.split(' · ')[0].trim()
-    setForm(f => ({ ...f, truck: tr }))
+    setForm(f => {
+      const next = { ...f, truck: tr }
+      // Auto-status: βάζεις φορτηγό → Ανατεθειμένη
+      if (tr && f.status === 'Open') next.status = 'Ανατεθειμένη'
+      // Auto-status: αφαιρείς φορτηγό → Open
+      if (!tr) { next.status = 'Open'; next.truck = '' }
+      // Auto-LDM αν δεν έχει οριστεί ακόμα
+      if (tr && !f.ldm && f.qty && f.pal !== 'χύμα') {
+        next.ldm = calcLdm(f.pal, f.qty)
+      }
+      return next
+    })
+  }
+
+  function handleClearTruck() {
+    setForm(f => ({ ...f, truck: '', status: 'Open' }))
   }
 
   async function handleSave() {
@@ -217,7 +247,7 @@ export default function Orders() {
     if (Object.keys(errs).length > 0) { setErrors(errs); return }
     setErrors({})
     setSaving(true)
-    const { id: _id, ...rest } = form
+    const { id: _id, _show2, ...rest } = form
     const payload = {
       ...rest,
       qty: parseFloat(form.qty)||0,
@@ -228,10 +258,20 @@ export default function Orders() {
       delivery_date: form.delivery_date || null,
       rdy: form.rdy || null,
     }
-    // auto-set status if truck assigned and status is Open
+
+    // Κανόνας 1: Φορτηγό → Ανατεθειμένη
     if (payload.truck && payload.status === 'Open') {
       payload.status = 'Ανατεθειμένη'
     }
+    // Κανόνας 2: Open → αφαίρεση φορτηγού
+    if (payload.status === 'Open') {
+      payload.truck = ''
+    }
+    // Κανόνας 3: Auto-LDM αν λείπει
+    if (payload.truck && !payload.ldm && payload.qty && payload.pal !== 'χύμα') {
+      payload.ldm = parseFloat(calcLdm(payload.pal, payload.qty)) || 0
+    }
+
     if (editing) {
       const { error } = await supabase.from('orders').update(payload).eq('id', editing)
       if (error) { console.error('Update error:', error); setSaving(false); return }
@@ -239,6 +279,21 @@ export default function Orders() {
       const { error } = await supabase.from('orders').insert([payload])
       if (error) { console.error('Insert error:', error); setSaving(false); return }
     }
+
+    // Κανόνας 4: delivery_date + truck → auto avail Διαθέσιμο στο "to"
+    if (payload.truck && payload.delivery_date) {
+      const ds = payload.delivery_date.substring(0, 10)
+      // Βρες αν υπάρχει ήδη avail για αυτό το φορτηγό εκείνη τη μέρα
+      const { data: existing } = await supabase
+        .from('avail').select('id').eq('tr', payload.truck).eq('fr', ds).maybeSingle()
+      const availPayload = { tr: payload.truck, fr: ds, nt: 'Διαθέσιμο', ct: payload.to || '', co: '' }
+      if (existing) {
+        await supabase.from('avail').update(availPayload).eq('id', existing.id)
+      } else {
+        await supabase.from('avail').insert([availPayload])
+      }
+    }
+
     setSaving(false)
     setShowModal(false)
     await loadOrders()
@@ -251,10 +306,17 @@ export default function Orders() {
   }
 
   async function cycleStatus(o) {
-    const idx = STATUSES.indexOf(o.status)
-    const next = STATUSES[(idx + 1) % STATUSES.length]
-    await supabase.from('orders').update({ status: next }).eq('id', o.id)
-    setOrders(prev => prev.map(x => x.id === o.id ? { ...x, status: next } : x))
+    // Normalize: παλιά statuses Μεταφορά/Παράδοση → Ανατεθειμένη
+    const currentStatus = ['Μεταφορά','Παράδοση'].includes(o.status) ? 'Ανατεθειμένη' : o.status
+    const idx = STATUSES.indexOf(currentStatus)
+    let next = STATUSES[(idx + 1) % STATUSES.length]
+    let truck = o.truck
+    // Αν πάμε σε Open → αφαίρεση φορτηγού
+    if (next === 'Open') truck = ''
+    // Αν πάμε σε Ανατεθειμένη χωρίς φορτηγό → παραμένει Open
+    if (next === 'Ανατεθειμένη' && !truck) next = 'Open'
+    await supabase.from('orders').update({ status: next, truck }).eq('id', o.id)
+    setOrders(prev => prev.map(x => x.id === o.id ? { ...x, status: next, truck } : x))
   }
 
   async function unassignTruck(o) {
@@ -528,16 +590,47 @@ export default function Orders() {
                     className="w-full bg-slate-700 border border-slate-600 rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500" />
                 </div>
 
-                <div>
-                  <label className="block text-xs text-slate-400 mb-1">Τύπος</label>
-                  <select name="pal" value={form.pal} onChange={handleChange}
-                    className="w-full bg-slate-700 border border-slate-600 rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500">
-                    {PAL_TYPES.map(p => <option key={p} value={p}>{p === 'E' ? 'EPAL' : p === 'B' ? 'Βιομ.' : p === 'P' ? 'Μισή' : p === 'M' ? 'Μέτρο' : 'Χύμα'}</option>)}
-                  </select>
+                {/* Παλέτες — γραμμή 1 */}
+                <div className="col-span-2">
+                  <label className="block text-xs text-slate-400 mb-1">Παλέτες {errors.ldm && <span className="text-red-400 ml-1">{errors.ldm}</span>}</label>
+                  <div className="flex gap-2 items-center">
+                    <select name="pal" value={form.pal} onChange={handleChange}
+                      className="bg-slate-700 border border-slate-600 rounded-xl px-2 py-2 text-white text-sm focus:outline-none focus:border-blue-500 w-28">
+                      {PAL_TYPES.map(p => <option key={p} value={p}>{PAL_LABEL[p]}</option>)}
+                    </select>
+                    <input name="qty" type="number" value={form.qty} onChange={handleChange} placeholder="Τεμ." min="0"
+                      className="bg-slate-700 border border-slate-600 rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500 w-20" />
+                    {form.qty && form.pal !== 'χύμα' && (
+                      <span className="text-slate-400 text-xs shrink-0">{calcLdm(form.pal, form.qty)} LDM</span>
+                    )}
+                    {!form._show2 && !form.qty2 && (
+                      <button type="button" onClick={() => setForm(f => ({ ...f, _show2: true, pal2: 'B', qty2: '' }))}
+                        className="text-xs text-blue-400 hover:text-blue-300 shrink-0 ml-1">+ 2ος τύπος</button>
+                    )}
+                  </div>
+                  {/* Γραμμή 2 — προαιρετική */}
+                  {(form._show2 || form.qty2) && (
+                    <div className="flex gap-2 items-center mt-2">
+                      <select name="pal2" value={form.pal2} onChange={handleChange}
+                        className="bg-slate-700 border border-slate-600 rounded-xl px-2 py-2 text-white text-sm focus:outline-none focus:border-blue-500 w-28">
+                        {PAL_TYPES.map(p => <option key={p} value={p}>{PAL_LABEL[p]}</option>)}
+                      </select>
+                      <input name="qty2" type="number" value={form.qty2} onChange={handleChange} placeholder="Τεμ." min="0"
+                        className="bg-slate-700 border border-slate-600 rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500 w-20" />
+                      {form.qty2 && form.pal2 !== 'χύμα' && (
+                        <span className="text-slate-400 text-xs shrink-0">{calcLdm(form.pal2, form.qty2)} LDM</span>
+                      )}
+                      <button type="button" onClick={() => setForm(f => ({ ...f, qty2: '', pal2: 'E', _show2: false, ldm: calcTotalLdm(f.pal, f.qty, '', '') }))}
+                        className="text-slate-500 hover:text-red-400 text-sm shrink-0">✕</button>
+                    </div>
+                  )}
+                  {/* Σύνολο LDM */}
+                  <div className="mt-2 flex items-center gap-2">
+                    <span className="text-xs text-slate-400">Σύνολο LDM:</span>
+                    <input name="ldm" type="number" value={form.ldm} onChange={handleChange} placeholder="ή χειροκίνητα"
+                      className="bg-slate-700 border border-slate-600 rounded-xl px-3 py-1.5 text-white text-sm focus:outline-none focus:border-blue-500 w-28" />
+                  </div>
                 </div>
-
-                <Field label="Τεμάχια" name="qty" type="number" value={form.qty} onChange={handleChange} error={errors.ldm || ''} />
-                <Field label="LDM" name="ldm" type="number" value={form.ldm} onChange={handleChange} error={errors.ldm ? '↑ ή τεμάχια' : ''} />
                 <Field label="Βάρος (kg)" name="wgt" type="number" value={form.wgt} onChange={handleChange} />
                 <Field label="Θερμοκρασία" name="tmp" value={form.tmp} onChange={handleChange} />
                 <Field label="Ημ. Φόρτωσης *" name="load_date" type="date" value={form.load_date} onChange={handleChange} error={errors.load_date} />
