@@ -7,7 +7,7 @@ import {
 } from 'date-fns'
 import { el } from 'date-fns/locale'
 
-const COMPANIES = ['Hellenic Ferry Services', 'Blue Star', 'Grimaldi', 'Attica']
+const COMPANIES = ['Hellenic Ferry Services', 'Blue Star']
 
 // Map κωδικών λιμανιών → ελληνικά
 const PORT_MAP = {
@@ -33,8 +33,8 @@ function parseRouteField(raw) {
 
   let company = null
   const rest = parts.slice(2).join(' ').toLowerCase()
-  if (rest.includes('grimaldi')) company = 'Grimaldi'
-  else if (rest.includes('attica') || rest.includes('attika')) company = 'Attica'
+  if (rest.includes('grimaldi')) company = 'Hellenic Ferry Services'
+  else if (rest.includes('attica') || rest.includes('attika')) company = 'Blue Star'
 
   // Normalize to ROUTES list
   const matched = ROUTES.find(r => r !== '__other__' &&
@@ -112,7 +112,7 @@ function parseExcelToFerries(workbook) {
     if (!c0 || (typeof c0 === 'string' && isNaN(Date.parse(c0)))) {
       const joined = row.map(v => String(v || '')).join(' ').toLowerCase()
       if (joined.includes('blue star')) currentCompany = 'Blue Star'
-      else if (joined.includes('grimaldi')) currentCompany = 'Grimaldi'
+      else if (joined.includes('grimaldi')) currentCompany = 'Hellenic Ferry Services'
       else if (joined.includes('hfs') || joined.includes('hellenic')) currentCompany = 'Hellenic Ferry Services'
       continue
     }
@@ -212,8 +212,6 @@ const EMPTY = {
 const COMPANY_COLORS = {
   'Hellenic Ferry Services': 'bg-blue-900/50 border-blue-700 text-blue-300',
   'Blue Star':               'bg-cyan-900/50 border-cyan-700 text-cyan-300',
-  'Grimaldi':                'bg-orange-900/50 border-orange-700 text-orange-300',
-  'Attica':                  'bg-purple-900/50 border-purple-700 text-purple-300',
 }
 
 export default function Ferries() {
@@ -701,9 +699,7 @@ export default function Ferries() {
                         <td className="py-1.5 pr-3">
                           <span className={`text-xs px-2 py-0.5 rounded-full border ${
                             r.company === 'Blue Star' ? 'bg-cyan-900/50 border-cyan-700 text-cyan-300' :
-                            r.company === 'Grimaldi' ? 'bg-orange-900/50 border-orange-700 text-orange-300' :
-                            r.company === 'Attica' ? 'bg-purple-900/50 border-purple-700 text-purple-300' :
-                            'bg-blue-900/50 border-blue-700 text-blue-300'
+'bg-blue-900/50 border-blue-700 text-blue-300'
                           }`}>{r.company}</span>
                         </td>
                         <td className="py-1.5 pr-3 text-slate-400 text-xs">{r.notes || '—'}</td>
