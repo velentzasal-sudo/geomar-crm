@@ -78,38 +78,43 @@ function splitPlateClient(raw) {
   return { truck: '', client: raw.trim() }
 }
 
-// Parse Excel date value (JS Date object from xlsx, or number serial, or string)
-function toISO(val) {
-  if (!val) return null
-  if (val instanceof Date) return format(val, 'yyyy-MM-dd')
-  if (typeof val === 'number' && val > 40000) {
-    const d = new Date((val - 25569) * 86400 * 1000)
-    return format(d, 'yyyy-MM-dd')
-  }
-  if (typeof val === 'string' && val.match(/\d{4}-\d{2}-\d{2}/)) return val.substring(0, 10)
-  return null
-}
-
 // Parse Excel workbook into ferry rows
 function parseExcelToFerries(workbook) {
   const results = []
   const ws = workbook.Sheets[workbook.SheetNames[0]]
-  // cellDates:true so dates come as JS Date objects
-  const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null, raw: false })
+  // raw:true → numbers stay numbers, dates stay Date objects (with cellDates:true)
+  const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null, raw: true })
 
-  let currentCompany = null  // set by section header rows
+  let currentCompany = null
 
   for (const row of rows) {
-    if (!row || row.every(c => c === null || c === '')) continue
+    if (!row || row.every(c => c === null || c === undefined)) continue
 
-    const c0 = row[0]  // date or null
+    const c0 = row[0]  // Date object or null
     const c1 = String(row[1] || '').trim()
     const c2 = String(row[2] || '').trim()
     const c3 = row[3]
     const c4 = row[4]
 
-    // Header row: no date in col0, contains company name
-    if (!c0 || (typeof c0 === 'string' && isNaN(Date.parse(c0)))) {
+    // c0 can be: JS Date, ISO string (from cellDates+raw), number serial, or text
+    function parseDateCell(v) {
+      if (!v) return null
+      if (v instanceof Date) {
+        // Use UTC values to avoid timezone shift
+        const y = v.getUTCFullYear(), m = String(v.getUTCMonth()+1).padStart(2,'0'), d = String(v.getUTCDate()).padStart(2,'0')
+        return `${y}-${m}-${d}`
+      }
+      if (typeof v === 'string' && v.match(/^\d{4}-\d{2}-\d{2}/)) return v.substring(0, 10)
+      if (typeof v === 'number' && v > 40000 && v < 60000) {
+        // Serial: integer part = days, no timezone issue
+        const d = new Date(Math.round((v - 25569) * 86400 * 1000))
+        const y = d.getUTCFullYear(), mo = String(d.getUTCMonth()+1).padStart(2,'0'), dy = String(d.getUTCDate()).padStart(2,'0')
+        return `${y}-${mo}-${dy}`
+      }
+      return null
+    }
+    const departure = parseDateCell(c0)
+    if (!departure) {
       const joined = row.map(v => String(v || '')).join(' ').toLowerCase()
       if (joined.includes('blue star')) currentCompany = 'Blue Star'
       else if (joined.includes('grimaldi')) currentCompany = 'Hellenic Ferry Services'
@@ -117,33 +122,29 @@ function parseExcelToFerries(workbook) {
       continue
     }
 
-    const departure = toISO(c0)
-    if (!departure) continue
-
     let route, truck, client, total_cost, company
 
-    // Detect format by checking col2:
-    // Blue Star format:  col1=route, col2=plate, col3=client(str), col4=amount
-    // Grimaldi format:   col1="route COMPANY", col2="plate client", col3=amount, col4=null
-    const col3isNum = c3 !== null && !isNaN(parseFloat(c3))
-    const col4isNum = c4 !== null && !isNaN(parseFloat(c4))
+    // Blue Star: col4 is a number (amount in last column)
+    // Grimaldi:  col3 is a number (amount), col4 is null
+    const c4isNum = typeof c4 === 'number'
+    const c3isNum = typeof c3 === 'number'
 
-    if (col4isNum || (!col3isNum && col4isNum === false && c2 && !c2.includes(' '))) {
-      // Blue Star: c2 is a single-token plate, c3=client string, c4=amount
+    if (c4isNum) {
+      // Blue Star format: route | plate | client | amount
       const { route: r } = parseRouteField(c1)
       route = r
       truck = c2.replace(/\s+/g, '').toUpperCase()
       client = String(c3 || '').trim()
-      total_cost = parseFloat(c4) || null
+      total_cost = c4
       company = currentCompany || 'Blue Star'
     } else {
-      // Grimaldi / HFS: c1="route GRIMALDI", c2="plate client", c3=amount
+      // Grimaldi/HFS format: "route COMPANY" | "plate client" | amount
       const { route: r, company: detectedCo } = parseRouteField(c1)
       route = r
       const { truck: t, client: cl } = splitPlateClient(c2)
       truck = t.replace(/\s+/g, '').toUpperCase()
       client = cl
-      total_cost = parseFloat(c3) || null
+      total_cost = c3isNum ? c3 : null
       company = detectedCo || currentCompany || 'Hellenic Ferry Services'
     }
 
