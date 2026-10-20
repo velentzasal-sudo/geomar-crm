@@ -223,8 +223,9 @@ export default function Weekly() {
               {visibleTrucks.map(t => (
                 <tr key={t.id} className="border-t border-slate-800">
                   <td className="py-2 pr-3">
-                    <p className="text-white text-sm font-bold">{t.tr}</p>
-                    <p className="text-slate-500 text-xs truncate max-w-[100px]">{t.driver}</p>
+                    <p className="text-white text-sm font-bold font-mono">{t.tractor || t.tr}</p>
+                    {t.trailer1 && <p className="text-slate-600 text-xs font-mono">{t.trailer1}</p>}
+                    {t.driver && <p className="text-slate-400 text-xs truncate max-w-[100px]">{t.driver}</p>}
                   </td>
                   {weekDays.map((d, i) => {
                     const rec       = getAvail(t.tr, d)
@@ -249,52 +250,62 @@ export default function Weekly() {
                               openEdit(t.tr, d)
                             }
                           }}
-                          className={`w-full rounded-xl px-2 py-2 text-xs border text-left transition-all min-h-[64px] group ${
+                          className={`w-full rounded-xl text-xs text-left transition-all min-h-[64px] group overflow-hidden border ${
                             hasActivity
                               ? 'bg-slate-700/80 border-slate-600 hover:border-slate-500'
-                              : 'bg-slate-800/40 border-slate-700/50 hover:bg-slate-700/40 hover:border-slate-600'
+                              : 'bg-slate-800/40 border-slate-700/30 hover:bg-slate-700/40 hover:border-slate-600'
                           }`}
                         >
                           {hasActivity ? (
-                            <div className="space-y-1">
-                              {/* Avail status badge */}
-                              {availSt && availSt !== 'Φορτωμένο' && (
-                                <div className={`text-xs px-1.5 py-0.5 rounded-md inline-block border ${
-                                  availSt === 'Διαθέσιμο'  ? 'bg-green-900/60 text-green-300 border-green-800' :
-                                  availSt === 'Εν κινήσει' ? 'bg-cyan-900/60 text-cyan-300 border-cyan-800' :
-                                  availSt === 'Ρεπό'       ? 'bg-slate-700 text-slate-400 border-slate-600' :
-                                  'bg-red-900/60 text-red-300 border-red-800'
-                                }`}>{availSt}</div>
+                            <div>
+                              {/* Λεπτή μπάρα χρώματος στην κορυφή */}
+                              {availSt && (
+                                <div className={`h-[3px] w-full rounded-t-xl ${
+                                  availSt === 'Διαθέσιμο'  ? 'bg-green-400' :
+                                  availSt === 'Εν κινήσει' ? 'bg-cyan-400' :
+                                  availSt === 'Ρεπό'       ? 'bg-slate-500' :
+                                  'bg-red-400'
+                                }`} />
                               )}
-                              {/* Location */}
-                              {rec?.ct && (
-                                <div className="text-slate-400 text-xs truncate">📍 {rec.ct}</div>
-                              )}
-                              {/* Orders count */}
-                              {dayOrders.length > 0 && (
-                                <div className="text-slate-300 text-xs">
-                                  📦 {dayOrders.length} παρ.
-                                </div>
-                              )}
-                              {/* LDM bar */}
-                              {ldmUsed > 0 && (
-                                <>
-                                  <div className="w-full bg-slate-600 rounded-full h-1 mt-1">
-                                    <div
-                                      className={`h-1 rounded-full ${ldmColor(ldmUsed, cap)}`}
-                                      style={{ width: `${pct}%` }}
-                                    />
+                              <div className="px-2 py-2 space-y-1">
+                                {/* Όνομα οδηγού αν υπάρχει status */}
+                                {availSt && (
+                                  <div className={`text-xs font-medium truncate ${
+                                    availSt === 'Διαθέσιμο'  ? 'text-green-300' :
+                                    availSt === 'Εν κινήσει' ? 'text-cyan-300' :
+                                    availSt === 'Ρεπό'       ? 'text-slate-400' :
+                                    'text-red-300'
+                                  }`}>{t.driver || availSt}</div>
+                                )}
+                                {/* Location */}
+                                {rec?.ct && (
+                                  <div className="text-slate-400 text-xs truncate">📍 {rec.ct}</div>
+                                )}
+                                {/* Orders count */}
+                                {dayOrders.length > 0 && (
+                                  <div className="text-slate-300 text-xs">
+                                    📦 {dayOrders.length} παρ.
                                   </div>
-                                  <div className={`text-xs font-medium ${ldmTextColor(ldmFree)}`}>
-                                    {ldmFree > 0 ? `${ldmFree.toFixed(1)} LDM ελεύθερο` : '⚠️ Γεμάτο'}
-                                  </div>
-                                </>
-                              )}
+                                )}
+                                {/* LDM bar */}
+                                {ldmUsed > 0 && (
+                                  <>
+                                    <div className="w-full bg-slate-600 rounded-full h-1 mt-1">
+                                      <div
+                                        className={`h-1 rounded-full ${ldmColor(ldmUsed, cap)}`}
+                                        style={{ width: `${pct}%` }}
+                                      />
+                                    </div>
+                                    <div className={`text-xs font-medium ${ldmTextColor(ldmFree)}`}>
+                                      {ldmFree > 0 ? `${ldmFree.toFixed(1)} LDM ελεύθερο` : '⚠️ Γεμάτο'}
+                                    </div>
+                                  </>
+                                )}
+                              </div>
                             </div>
                           ) : (
-                            <div className="flex flex-col items-center justify-center h-12 opacity-30 group-hover:opacity-60 transition-opacity">
-                              <span className="text-slate-400 text-lg">+</span>
-                              <span className="text-slate-500 text-xs">{cap.toFixed(1)} LDM</span>
+                            <div className="flex items-center justify-center h-full min-h-[60px] opacity-20 group-hover:opacity-50 transition-opacity">
+                              <span className="text-slate-400 text-xl">+</span>
                             </div>
                           )}
                         </button>
