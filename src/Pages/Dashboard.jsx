@@ -12,20 +12,27 @@ export default function Dashboard() {
   const [memo, setMemo] = useState('')
   const [memoId, setMemoId] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [trucks, setTrucks] = useState([])
+  const [avail, setAvail] = useState([])
 
   useEffect(() => { loadAll() }, [])
 
   async function loadAll() {
     setLoading(true)
-    const [{ data: ord }, { data: cli }, { data: mem }, { data: pay }] = await Promise.all([
+    const todayStr = format(new Date(), 'yyyy-MM-dd')
+    const [{ data: ord }, { data: cli }, { data: mem }, { data: pay }, { data: trk }, { data: av }] = await Promise.all([
       supabase.from('orders').select('*').not('status', 'eq', 'Delivered'),
       supabase.from('clients').select('id,name,next_card_date,total_debt'),
       supabase.from('memos').select('*').limit(1).maybeSingle(),
       supabase.from('payments').select('*').eq('paid', false).order('due_date'),
+      supabase.from('trucks').select('tr,alias'),
+      supabase.from('avail').select('*').eq('fr', todayStr),
     ])
     setOrders(ord || [])
     setClients(cli || [])
     setPayments(pay || [])
+    setTrucks(trk || [])
+    setAvail(av || [])
     if (mem) { setMemo(mem.content || ''); setMemoId(mem.id) }
     setLoading(false)
   }
@@ -45,6 +52,45 @@ export default function Dashboard() {
   const open     = orders.filter(o => o.status === 'Open').length
   const transit  = orders.filter(o => o.status === 'Μεταφορά').length
   const assigned = orders.filter(o => o.status === 'Ανατεθειμένη').length
+
+  const todayStr = format(today, 'yyyy-MM-dd')
+
+  // Φορτηγά από avail (manual)
+  const availToday = avail.map(a => {
+    const t = trucks.find(t => t.tr === a.tr)
+    return { id: a.id, tr: a.tr, alias: t?.alias || a.tr, status: a.nt, location: a.ct, notes: a.co, source: 'avail' }
+  })
+
+  // Φορτηγά από παραγγελίες (αυτόματα) — status Μεταφορά ή Ανατεθειμένη με truck
+  const ordersToday = orders
+    .filter(o => o.truck && ['Μεταφορά','Ανατεθειμένη','Παράδοση'].includes(o.status))
+    .map(o => {
+      const t = trucks.find(t => t.tr === o.truck)
+      return { id: `ord-${o.id}`, tr: o.truck, alias: t?.alias || o.truck, status: o.status, location: o.from + ' → ' + o.to, notes: o.client, source: 'order' }
+    })
+
+  // Merge: avail overrides order for same truck
+  const availTrucks = new Set(availToday.map(a => a.tr))
+  const mergedTrucks = [
+    ...availToday,
+    ...ordersToday.filter(o => !availTrucks.has(o.tr)),
+  ]
+
+  // Ομαδοποίηση: Ιταλία / Ελλάδα / Άλλο
+  function detectCountry(loc = '') {
+    const l = loc.toLowerCase()
+    if (l.includes('ιταλ') || l.includes('ital') || l.includes('μπαρ') || l.includes('bari') ||
+        l.includes('βενετ') || l.includes('venet') || l.includes('μιλαν') || l.includes('milan') ||
+        l.includes('ανκον') || l.includes('ancona') || l.includes('τριεστ') || l.includes('tries') ||
+        l.includes('πατρ') && l.includes('μπαρ')) return 'IT'
+    if (l.includes('ελλ') || l.includes('αθην') || l.includes('θεσσαλ') || l.includes('πατρ') ||
+        l.includes('athen') || l.includes('thess') || l.includes('patras') || l.includes('greece')) return 'GR'
+    return 'OTHER'
+  }
+
+  const trIT    = mergedTrucks.filter(t => detectCountry(t.location) === 'IT')
+  const trGR    = mergedTrucks.filter(t => detectCountry(t.location) === 'GR')
+  const trOther = mergedTrucks.filter(t => detectCountry(t.location) === 'OTHER')
 
   const cardsOverdue = clients.filter(c => {
     if (!c.next_card_date) return false
@@ -105,6 +151,42 @@ export default function Dashboard() {
         <Stat icon="🔗" label="Ανατεθ." value={assigned} color="orange" />
         <Stat icon="🚚" label="Μεταφορά" value={transit} color="green" />
       </div>
+
+      {/* ── FLEET LOCATION ── */}
+      {mergedTrucks.length > 0 && (
+        <div className="bg-slate-800 border border-slate-700 rounded-2xl p-4">
+          <p className="text-white font-bold text-sm mb-3">📍 Πού είναι τα φορτηγά σήμερα</p>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            {/* Ιταλία */}
+            <div className="bg-slate-700/50 rounded-xl p-3">
+              <p className="text-xs font-semibold text-slate-400 mb-2">🇮🇹 Ιταλία <span className="text-white ml-1">{trIT.length}</span></p>
+              {trIT.length === 0 ? <p className="text-slate-500 text-xs">—</p> : (
+                <div className="space-y-1.5">
+                  {trIT.map(t => <TruckRow key={t.id} truck={t} />)}
+                </div>
+              )}
+            </div>
+            {/* Ελλάδα */}
+            <div className="bg-slate-700/50 rounded-xl p-3">
+              <p className="text-xs font-semibold text-slate-400 mb-2">🇬🇷 Ελλάδα <span className="text-white ml-1">{trGR.length}</span></p>
+              {trGR.length === 0 ? <p className="text-slate-500 text-xs">—</p> : (
+                <div className="space-y-1.5">
+                  {trGR.map(t => <TruckRow key={t.id} truck={t} />)}
+                </div>
+              )}
+            </div>
+            {/* Άλλο / Άγνωστο */}
+            <div className="bg-slate-700/50 rounded-xl p-3">
+              <p className="text-xs font-semibold text-slate-400 mb-2">🔀 Άλλο <span className="text-white ml-1">{trOther.length}</span></p>
+              {trOther.length === 0 ? <p className="text-slate-500 text-xs">—</p> : (
+                <div className="space-y-1.5">
+                  {trOther.map(t => <TruckRow key={t.id} truck={t} />)}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── AMBER: UPCOMING 7 DAYS ── */}
       {(cardsSoon.length > 0 || soonPayments.length > 0) && (
@@ -201,5 +283,30 @@ function StatusBadge({ status }) {
     <span className={`text-xs px-1.5 py-0.5 rounded-md shrink-0 ${map[status] || 'bg-slate-600 text-slate-300'}`}>
       {status}
     </span>
+  )
+}
+
+function TruckRow({ truck }) {
+  const statusColor = {
+    'Διαθέσιμο':  'text-green-400',
+    'Εν κινήσει': 'text-cyan-400',
+    'Service':    'text-red-400',
+    'Μεταφορά':   'text-green-400',
+    'Ανατεθειμένη': 'text-orange-400',
+    'Παράδοση':   'text-purple-400',
+  }
+  const sourceIcon = truck.source === 'avail' ? '✏️' : '📦'
+  return (
+    <div className="flex items-start gap-2 bg-slate-800 rounded-lg px-2.5 py-1.5">
+      <span className="text-xs mt-0.5">{sourceIcon}</span>
+      <div className="min-w-0 flex-1">
+        <p className="text-white text-xs font-semibold truncate">{truck.alias || truck.tr}</p>
+        {truck.location && <p className="text-slate-400 text-xs truncate">{truck.location}</p>}
+        {truck.notes && <p className="text-slate-500 text-xs truncate">{truck.notes}</p>}
+      </div>
+      <span className={`text-xs shrink-0 font-medium ${statusColor[truck.status] || 'text-slate-400'}`}>
+        {truck.status}
+      </span>
+    </div>
   )
 }
