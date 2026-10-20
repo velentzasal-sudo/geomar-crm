@@ -4,7 +4,13 @@ import { supabase } from '../lib/supabase'
 import { format, parseISO, startOfWeek, endOfWeek, isThisWeek } from 'date-fns'
 import { el } from 'date-fns/locale'
 
-const EMPTY_TRUCK = { tr: '', driver: '', phone: '', tare: '', payload: '', ldm: '', tmp: '', notes: '' }
+const EMPTY_TRUCK = { tr: '', tractor: '', trailer1: '', trailer2: '', driver: '', phone: '', tare: '', payload: '', ldm: '', tmp: '', notes: '' }
+
+// Κανονικοποίηση πινακίδας: αφαίρεση παυλών/κενών, uppercase
+// ΙΑΒ-1808 === ΙΑΒ1808 === ιαβ 1808
+function normPlate(p) {
+  return (p || '').replace(/[-\s]/g, '').toUpperCase()
+}
 
 const LDM_FACTORS = { E: 0.40, B: 0.50, P: 0.60, M: 1.00 }
 
@@ -130,7 +136,7 @@ export default function Fleet() {
     setHistorySearch('')
     setHistoryStatus('all')
     // auto-open current week
-    const weeks = groupByWeek(allOrders.filter(o => o.truck === truck.tr))
+    const weeks = groupByWeek(allOrders.filter(o => normPlate(o.truck) === normPlate(truck.tr)))
     const initial = {}
     weeks.forEach(w => { if (w.thisWeek) initial[w.key] = true })
     // if none is current week, open the first (most recent)
@@ -180,7 +186,7 @@ export default function Fleet() {
 
   // History derived
   const rawTruckOrders = historyTruck
-    ? allOrders.filter(o => o.truck === historyTruck.tr)
+    ? allOrders.filter(o => normPlate(o.truck) === normPlate(historyTruck.tr))
     : []
 
   const filteredTruckOrders = rawTruckOrders.filter(o => {
@@ -222,7 +228,7 @@ export default function Fleet() {
         <div className="space-y-2">
           {filtered.map(t => {
             const av = availMap[t.tr]
-            const orderCount = allOrders.filter(o => o.truck === t.tr).length
+            const orderCount = allOrders.filter(o => normPlate(o.truck) === normPlate(t.tr)).length
             const isOpen = !!expanded[t.id]
 
             return (
@@ -267,6 +273,30 @@ export default function Fleet() {
                       </button>
                     </div>
 
+                    {/* Πινακίδες */}
+                    {(t.tractor || t.trailer1) && (
+                      <div className="grid grid-cols-2 gap-2">
+                        {t.tractor && (
+                          <div className="bg-slate-700/60 rounded-xl p-2.5">
+                            <p className="text-slate-400 text-xs mb-0.5">Τράκτορας</p>
+                            <p className="text-white font-mono font-bold text-sm">{t.tractor}</p>
+                          </div>
+                        )}
+                        {t.trailer1 && (
+                          <div className="bg-slate-700/60 rounded-xl p-2.5">
+                            <p className="text-slate-400 text-xs mb-0.5">Θάλαμος{t.trailer2 ? ' 1' : ''}</p>
+                            <p className="text-white font-mono font-bold text-sm">{t.trailer1}</p>
+                          </div>
+                        )}
+                        {t.trailer2 && (
+                          <div className="bg-slate-700/60 rounded-xl p-2.5">
+                            <p className="text-slate-400 text-xs mb-0.5">Θάλαμος 2</p>
+                            <p className="text-white font-mono font-bold text-sm">{t.trailer2}</p>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
                     {/* Info grid */}
                     <div className="grid grid-cols-3 gap-2">
                       <div className="bg-slate-700 rounded-xl p-3 text-center">
@@ -300,7 +330,7 @@ export default function Fleet() {
 
                     {/* Κόστος καραβιών */}
                     {(() => {
-                      const tFerries = ferries.filter(f => f.truck === t.tr)
+                      const tFerries = ferries.filter(f => normPlate(f.truck) === normPlate(t.tr))
                       if (tFerries.length === 0) return null
                       const total = tFerries.reduce((s, f) => s + (parseFloat(f.total_cost)||0), 0)
                       return (
@@ -310,7 +340,7 @@ export default function Fleet() {
                             <span className="text-slate-400 text-xs">{tFerries.length} κρατήσεις</span>
                             <span className="text-green-400 font-bold text-sm">{total.toLocaleString('el-GR', { minimumFractionDigits: 2 })} €</span>
                           </div>
-                          {['Hellenic Ferry Services','Blue Star'].map(c => {
+                          {['Hellenic Sea Ferries','Blue Star'].map(c => {
                             const ct = tFerries.filter(f => f.company === c).reduce((s,f) => s+(parseFloat(f.total_cost)||0), 0)
                             return ct > 0 ? (
                               <div key={c} className="flex items-center justify-between text-xs">
@@ -453,7 +483,25 @@ export default function Fleet() {
             <div className="p-6">
               <h2 className="text-xl font-bold text-white mb-6">{editing ? '✏️ Επεξεργασία' : '➕ Νέο Φορτηγό'}</h2>
               <div className="grid grid-cols-2 gap-4">
-                <TField label="Αριθμός" name="tr" value={form.tr} onChange={handleChange} className="col-span-2" />
+                {/* Πινακίδες */}
+                <TField label="Κωδικός Τράκτορα (πινακίδα)" name="tractor" value={form.tractor} onChange={handleChange} className="col-span-2" />
+                <div className="col-span-2">
+                  <label className="block text-xs text-slate-400 mb-1">Κωδικός Θαλάμου (Ρ)</label>
+                  <div className="flex gap-2 items-center">
+                    <input name="trailer1" value={form.trailer1 || ''} onChange={handleChange} placeholder="π.χ. ΡΑΒ1234"
+                      className="flex-1 bg-slate-700 border border-slate-600 rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500" />
+                    {!form.trailer2 && form.trailer2 !== undefined ? (
+                      <button type="button" onClick={() => setForm(f => ({ ...f, trailer2: '' }))}
+                        className="px-3 py-2 bg-slate-700 hover:bg-slate-600 border border-slate-600 rounded-xl text-slate-300 text-sm transition-colors whitespace-nowrap">
+                        + 2ος
+                      </button>
+                    ) : (
+                      <input name="trailer2" value={form.trailer2 || ''} onChange={handleChange} placeholder="2ος κωδικός"
+                        className="flex-1 bg-slate-700 border border-slate-600 rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500" />
+                    )}
+                  </div>
+                </div>
+                <TField label="Κωδικός (tr)" name="tr" value={form.tr} onChange={handleChange} className="col-span-2" />
                 <TField label="Οδηγός" name="driver" value={form.driver} onChange={handleChange} />
                 <TField label="Τηλέφωνο" name="phone" value={form.phone} onChange={handleChange} />
                 <TField label="Τάρα (kg)" name="tare" type="number" value={form.tare} onChange={handleChange} />
