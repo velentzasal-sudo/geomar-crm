@@ -93,6 +93,13 @@ const EMPTY = {
   rdy:'', load_date:'', delivery_date:'', price:'', notes:'', status:'Open', truck:'',
 }
 
+const TEMP_OPTIONS = [
+  { value: '🔵 Κατάψυξη', label: '🔵 Κατάψυξη' },
+  { value: '🟢 Συντήρηση', label: '🟢 Συντήρηση' },
+  { value: '🟡 Ζεστό',     label: '🟡 Ζεστό'     },
+  { value: '⚫ Ξηρό',      label: '⚫ Ξηρό'      },
+]
+
 const PAL_LABEL = { E: 'EPAL', B: 'Βιομ.', P: 'Μισή', M: 'Μέτρο', χύμα: 'Χύμα' }
 
 function validate(form) {
@@ -100,6 +107,7 @@ function validate(form) {
   if (!form.client?.trim())   errors.client = 'Υποχρεωτικό'
   if (!form.load_date)        errors.load_date = 'Υποχρεωτικό'
   if (!form.ldm && !form.qty) errors.ldm = 'Βάλε LDM ή τεμάχια'
+  if (!form.tmp)              errors.tmp = 'Υποχρεωτικό'
   return errors
 }
 
@@ -115,6 +123,7 @@ export default function Orders() {
   const [form, setForm] = useState(EMPTY)
   const [search, setSearch] = useState('')
   const [filterStatus, setFilterStatus] = useState('all')
+  const [filterTemp, setFilterTemp]     = useState('all')
   const [saving, setSaving] = useState(false)
   const [showDelivered, setShowDelivered] = useState(false)
   const [showDispatch, setShowDispatch] = useState(false)
@@ -366,9 +375,10 @@ export default function Orders() {
 
   const filtered = orders.filter(o => {
     const matchStatus = filterStatus === 'all' || o.status === filterStatus
+    const matchTemp   = filterTemp === 'all' || o.tmp === filterTemp
     const q = search.toLowerCase()
     const matchSearch = !q || [o.client, o.firm, o.from, o.to, o.truck].some(v => v?.toLowerCase().includes(q))
-    return matchStatus && matchSearch
+    return matchStatus && matchTemp && matchSearch
   })
 
   const totalLdm = filtered.reduce((s, o) => s + (parseFloat(o.ldm) || 0), 0)
@@ -491,6 +501,14 @@ export default function Orders() {
         >
           <option value="all">Όλες</option>
           {STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+        </select>
+        <select
+          value={filterTemp}
+          onChange={e => setFilterTemp(e.target.value)}
+          className="bg-slate-800 border border-slate-700 rounded-xl px-4 py-2 text-white text-sm focus:outline-none focus:border-blue-500"
+        >
+          <option value="all">Όλες θερμοκρασίες</option>
+          {TEMP_OPTIONS.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
         </select>
         <label className="flex items-center gap-2 text-slate-400 text-sm cursor-pointer">
           <input type="checkbox" checked={showDelivered} onChange={e => setShowDelivered(e.target.checked)} className="rounded" />
@@ -632,7 +650,22 @@ export default function Orders() {
                   </div>
                 </div>
                 <Field label="Βάρος (kg)" name="wgt" type="number" value={form.wgt} onChange={handleChange} />
-                <Field label="Θερμοκρασία" name="tmp" value={form.tmp} onChange={handleChange} />
+                <div>
+                  <label className="block text-xs text-slate-400 mb-1">Θερμοκρασία *{errors.tmp && <span className="text-red-400 ml-1">{errors.tmp}</span>}</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {TEMP_OPTIONS.map(t => (
+                      <button key={t.value} type="button"
+                        onClick={() => setForm(f => ({ ...f, tmp: t.value }))}
+                        className={`py-2 rounded-xl text-sm font-medium border transition-colors ${
+                          form.tmp === t.value
+                            ? 'bg-blue-600 border-blue-500 text-white'
+                            : 'bg-slate-700 border-slate-600 text-slate-300 hover:bg-slate-600'
+                        }`}>
+                        {t.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
                 <Field label="Ημ. Φόρτωσης *" name="load_date" type="date" value={form.load_date} onChange={handleChange} error={errors.load_date} />
                 <Field label="Ημ. Παράδοσης" name="delivery_date" type="date" value={form.delivery_date} onChange={handleChange} />
                 <Field label="Τιμή (€)" name="price" type="number" value={form.price} onChange={handleChange} />
