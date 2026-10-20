@@ -4,7 +4,7 @@ import { supabase } from '../lib/supabase'
 import { format, parseISO, startOfWeek, endOfWeek, isThisWeek } from 'date-fns'
 import { el } from 'date-fns/locale'
 
-const EMPTY_TRUCK = { tr: '', tractor: '', trailer1: '', trailer2: '', driver: '', phone: '', tare: '', payload: '', ldm: '', tmp: '', notes: '' }
+const EMPTY_TRUCK = { tr: '', tractor: '', trailer1: '', trailer2: null, driver: '', phone: '', tare: '', payload: '', ldm: '', tmp: '', notes: '' }
 
 // Κανονικοποίηση πινακίδας: αφαίρεση παυλών/κενών, uppercase
 // ΙΑΒ-1808 === ΙΑΒ1808 === ιαβ 1808
@@ -145,7 +145,7 @@ export default function Fleet() {
   }
 
   function openNew()   { setEditing(null); setForm(EMPTY_TRUCK); setShowModal(true) }
-  function openEdit(t) { setEditing(t.id); setForm({ ...t }); setShowModal(true) }
+  function openEdit(t) { setEditing(t.id); setForm({ ...t, trailer2: t.trailer2 ?? null }); setShowModal(true) }
 
   function handleChange(e) {
     const { name, value } = e.target
@@ -490,13 +490,13 @@ export default function Fleet() {
                   <div className="flex gap-2 items-center">
                     <input name="trailer1" value={form.trailer1 || ''} onChange={handleChange} placeholder="π.χ. ΡΑΒ1234"
                       className="flex-1 bg-slate-700 border border-slate-600 rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500" />
-                    {!form.trailer2 && form.trailer2 !== undefined ? (
+                    {form.trailer2 === null ? (
                       <button type="button" onClick={() => setForm(f => ({ ...f, trailer2: '' }))}
                         className="px-3 py-2 bg-slate-700 hover:bg-slate-600 border border-slate-600 rounded-xl text-slate-300 text-sm transition-colors whitespace-nowrap">
                         + 2ος
                       </button>
                     ) : (
-                      <input name="trailer2" value={form.trailer2 || ''} onChange={handleChange} placeholder="2ος κωδικός"
+                      <input name="trailer2" value={form.trailer2} onChange={handleChange} placeholder="2ος κωδικός"
                         className="flex-1 bg-slate-700 border border-slate-600 rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500" />
                     )}
                   </div>
