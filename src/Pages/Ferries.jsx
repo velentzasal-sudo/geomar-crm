@@ -266,6 +266,17 @@ export default function Ferries() {
   const [importing, setImporting]     = useState(false)
   const [importDone, setImportDone]   = useState(null) // { inserted, skipped }
 
+  // Φίλτρο πινακίδας στο calendar
+  const [calPlate, setCalPlate] = useState('')
+
+  // Tab λίστας + φίλτρα
+  const [listTab, setListTab]         = useState(false) // false=calendar, true=list
+  const [listCompany, setListCompany] = useState('')
+  const [listRoute, setListRoute]     = useState('')
+
+  // Popup επεξεργασίας chip
+  const [chipPopup, setChipPopup] = useState(null) // { bookingId, x, y }
+
   useEffect(() => {
     loadAll()
     supabase.from('trucks').select('tr,driver').order('tr').then(({ data }) => setTrucks(data || []))
@@ -278,11 +289,25 @@ export default function Ferries() {
     setLoading(false)
   }
 
-  // Κρατήσεις για συγκεκριμένη μέρα
+  // Κρατήσεις για συγκεκριμένη μέρα (με φίλτρο πινακίδας αν υπάρχει)
   function bookingsForDay(date) {
     const ds = format(date, 'yyyy-MM-dd')
-    return bookings.filter(b => b.departure === ds)
+    return bookings.filter(b => {
+      if (b.departure !== ds) return false
+      if (calPlate) {
+        const q = calPlate.replace(/[-\s]/g,'').toUpperCase()
+        return (b.truck || '').replace(/[-\s]/g,'').toUpperCase().includes(q)
+      }
+      return true
+    })
   }
+
+  // Λίστα με φίλτρα
+  const listBookings = bookings.filter(b => {
+    if (listCompany && b.company !== listCompany) return false
+    if (listRoute   && b.route   !== listRoute)   return false
+    return true
+  }).sort((a,b) => b.departure.localeCompare(a.departure))
 
   // Σύνολο κόστους μήνα
   const monthStart = startOfMonth(current)
@@ -489,11 +514,79 @@ export default function Ferries() {
         </div>
       </div>
 
+      {/* Tab switch + calPlate filter */}
+      <div className="flex items-center gap-3">
+        <div className="flex bg-slate-800 border border-slate-700 rounded-xl p-0.5">
+          <button onClick={() => setListTab(false)}
+            className={`px-3 py-1.5 rounded-lg text-sm transition-colors ${!listTab ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'}`}>
+            📅 Ημερολόγιο
+          </button>
+          <button onClick={() => setListTab(true)}
+            className={`px-3 py-1.5 rounded-lg text-sm transition-colors ${listTab ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'}`}>
+            📋 Λίστα
+          </button>
+        </div>
+
+        {!listTab && (
+          <input
+            value={calPlate}
+            onChange={e => setCalPlate(e.target.value)}
+            placeholder="🔍 Πινακίδα..."
+            className="bg-slate-800 border border-slate-700 rounded-xl px-3 py-1.5 text-white text-sm w-40 focus:outline-none focus:border-blue-500 placeholder-slate-500"
+          />
+        )}
+
+        {listTab && (
+          <>
+            <select value={listCompany} onChange={e => setListCompany(e.target.value)}
+              className="bg-slate-800 border border-slate-700 rounded-xl px-3 py-1.5 text-white text-sm focus:outline-none focus:border-blue-500">
+              <option value="">Όλες εταιρείες</option>
+              {COMPANIES.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+            <select value={listRoute} onChange={e => setListRoute(e.target.value)}
+              className="bg-slate-800 border border-slate-700 rounded-xl px-3 py-1.5 text-white text-sm focus:outline-none focus:border-blue-500">
+              <option value="">Όλα δρομολόγια</option>
+              {[...new Set(bookings.map(b => b.route).filter(Boolean))].sort().map(r => (
+                <option key={r} value={r}>{r}</option>
+              ))}
+            </select>
+          </>
+        )}
+      </div>
+
       {/* Ημερολόγιο + Sidebar */}
       <div className="flex gap-4 flex-1 min-h-0">
 
+      {/* Λίστα view */}
+      {listTab ? (
+        <div className="flex-1 overflow-y-auto space-y-1.5 min-w-0">
+          {listBookings.length === 0 ? (
+            <p className="text-slate-500 text-center py-12">Δεν βρέθηκαν κρατήσεις</p>
+          ) : listBookings.map(b => (
+            <div key={b.id} className={`border rounded-2xl px-4 py-3 flex items-center gap-3 ${COMPANY_COLORS[b.company] || 'bg-slate-800 border-slate-700'}`}>
+              <div className="shrink-0 text-center w-12">
+                <p className="text-white font-bold text-sm">{b.departure ? format(parseISO(b.departure), 'd') : '—'}</p>
+                <p className="text-xs opacity-60">{b.departure ? format(parseISO(b.departure), 'MMM', { locale: el }) : ''}</p>
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-white font-semibold text-sm truncate">{b.route}</p>
+                <p className="text-xs opacity-70">{b.company} {b.truck && `· ${b.truck}`}</p>
+              </div>
+              <div className="text-right shrink-0">
+                <p className="text-green-300 font-bold text-sm">{b.total_cost ? `${b.total_cost.toLocaleString('el-GR')}€` : '—'}</p>
+                <p className="text-xs opacity-60">{b.meters ?? 16.5}m</p>
+              </div>
+              <div className="flex gap-1 shrink-0">
+                <button onClick={() => openEdit(b)} className="px-2 py-1 bg-black/20 hover:bg-black/40 rounded-lg text-xs">✏️</button>
+                <button onClick={() => handleDelete(b.id)} className="px-2 py-1 bg-black/20 hover:bg-red-900/60 rounded-lg text-xs">🗑️</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : null}
+
       {/* Ημερολόγιο */}
-      {loading ? (
+      {!listTab && (loading ? (
         <div className="text-slate-400 py-8 text-center flex-1">Φόρτωση...</div>
       ) : (
         <div className="bg-slate-800/50 border border-slate-700 rounded-2xl overflow-hidden flex-1 min-w-0">
@@ -516,7 +609,7 @@ export default function Ferries() {
                 <div
                   key={i}
                   onClick={() => setSelected(day)}
-                  className={`min-h-20 border-b border-r border-slate-700/50 p-1.5 cursor-pointer transition-colors
+                  className={`min-h-20 border-b border-r border-slate-700/50 p-1.5 cursor-pointer transition-colors relative
                     ${!inMonth ? 'opacity-30' : ''}
                     ${isSelected ? 'bg-blue-900/30' : 'hover:bg-slate-700/30'}
                   `}
@@ -527,7 +620,8 @@ export default function Ferries() {
 
                   {dayBookings.slice(0, 3).map(b => (
                     <div key={b.id}
-                      className={`text-xs px-1 py-0.5 rounded border mb-0.5 flex items-center gap-1 overflow-hidden ${COMPANY_COLORS[b.company] || 'bg-slate-700 border-slate-600 text-slate-300'}`}>
+                      onClick={e => { e.stopPropagation(); const r = e.currentTarget.getBoundingClientRect(); setChipPopup({ bookingId: b.id, x: r.left, y: r.bottom + 4 }) }}
+                      className={`text-xs px-1 py-0.5 rounded border mb-0.5 flex items-center gap-1 overflow-hidden cursor-pointer hover:brightness-125 ${COMPANY_COLORS[b.company] || 'bg-slate-700 border-slate-600 text-slate-300'}`}>
                       <span className="font-bold truncate max-w-[3rem]">{b.truck || '–'}</span>
                       <span className="opacity-70 truncate shrink-0">{shortRoute(b.route)}</span>
                     </div>
@@ -540,7 +634,7 @@ export default function Ferries() {
             })}
           </div>
         </div>
-      )}
+      ))}
 
       {/* Sidebar: λεπτομέρειες επιλεγμένης μέρας */}
       {selected && (
