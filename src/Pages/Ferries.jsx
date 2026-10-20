@@ -9,156 +9,154 @@ import { el } from 'date-fns/locale'
 
 const COMPANIES = ['Hellenic Ferry Services', 'Blue Star', 'Grimaldi', 'Attica']
 
-// Map κωδικών λιμανιών → ελληνικό όνομα
+// Map κωδικών λιμανιών → ελληνικά
 const PORT_MAP = {
-  'IG': 'Ηγουμενίτσα', 'HG': 'Ηγουμενίτσα', 'HJG': 'Ηγουμενίτσα',
-  'BA': 'Μπάρι',
-  'PA': 'Πάτρα',
-  'AN': 'Ανκόνα',
-  'VEN': 'Βενετία', 'PATRA': 'Πάτρα', 'ΒΕΝΕΤΙΑ': 'Βενετία', 'ΠΑΤΡΑ': 'Πάτρα',
-}
-
-// Excel date serial → JS Date
-function excelDateToISO(serial) {
-  if (!serial || isNaN(serial)) return null
-  const date = new Date((serial - 25569) * 86400 * 1000)
-  return format(date, 'yyyy-MM-dd')
+  'IG': 'Ηγουμενίτσα', 'HG': 'Ηγουμενίτσα', 'HJG': 'Ηγουμενίτσα', 'IGO': 'Ηγουμενίτσα',
+  'BA': 'Μπάρι', 'BARI': 'Μπάρι',
+  'PA': 'Πάτρα', 'PAT': 'Πάτρα', 'PATRA': 'Πάτρα', 'ΠΑΤΡΑ': 'Πάτρα',
+  'AN': 'Ανκόνα', 'ANC': 'Ανκόνα', 'ANCONA': 'Ανκόνα',
+  'VEN': 'Βενετία', 'VENICE': 'Βενετία', 'VENEZIA': 'Βενετία', 'ΒΕΝΕΤΙΑ': 'Βενετία',
 }
 
 function normalizePort(code) {
   if (!code) return code
-  const up = code.trim().toUpperCase()
-  return PORT_MAP[up] || code.trim()
+  return PORT_MAP[code.trim().toUpperCase()] || code.trim()
 }
 
-function parseRoute(raw) {
-  if (!raw) return ''
-  const parts = raw.trim().toUpperCase().split(/\s+/)
-  if (parts.length >= 2) {
-    const from = normalizePort(parts[0])
-    const to   = normalizePort(parts[1])
-    return `${from} → ${to}`
-  }
-  // Greek text like "ΠΑΤΡΑ ΒΕΝΕΤΙΑ"
-  const greek = raw.trim()
-  const grParts = greek.split(/\s+/)
-  if (grParts.length >= 2) {
-    return `${normalizePort(grParts[0])} → ${normalizePort(grParts[1])}`
-  }
-  return raw.trim()
+// "IG BA" or "HG AN GRIMALDI" → { from, to, company }
+function parseRouteField(raw) {
+  if (!raw) return { route: '', company: null }
+  const parts = raw.trim().split(/\s+/)
+  const from = normalizePort(parts[0])
+  const to   = normalizePort(parts[1] || '')
+  const route = `${from} → ${to}`
+
+  let company = null
+  const rest = parts.slice(2).join(' ').toLowerCase()
+  if (rest.includes('grimaldi')) company = 'Grimaldi'
+  else if (rest.includes('attica') || rest.includes('attika')) company = 'Attica'
+
+  // Normalize to ROUTES list
+  const matched = ROUTES.find(r => r !== '__other__' &&
+    r.replace(/\s/g,'').toLowerCase() === route.replace(/\s/g,'').replace(/→/g,'').toLowerCase()
+  )
+  return { route: matched || route, company }
 }
 
-// Detect company from section header or row content
-function detectCompany(header, rowText) {
-  const h = (header || '').toLowerCase()
-  const r = (rowText || '').toLowerCase()
-  if (h.includes('blue star') || r.includes('blue star')) return 'Blue Star'
-  if (h.includes('grimaldi') || r.includes('grimaldi')) return 'Grimaldi'
-  if (h.includes('attica') || r.includes('attica')) return 'Attica'
-  if (h.includes('hfs') || h.includes('hellenic')) return 'Hellenic Ferry Services'
+// "IAE6104 DIAMANTHS" or "THEOCHAROPOULOS NXY7402" → { truck, client }
+// Plate pattern: 2-3 letters + 3-4 digits (Latin or Greek), possibly with space between letters and digits
+function splitPlateClient(raw) {
+  if (!raw) return { truck: '', client: '' }
+  const parts = raw.trim().split(/\s+/)
+
+  // Find which token looks like a plate
+  const plateRe = /^[A-ZΑΒΓΔΕΖΗΘΙΚΛΜΝΞΟΠΡΣΤΥΦΧΨΩ]{2,3}\d{3,4}$/i
+  const plateStartRe = /^[A-ZΑΒΓΔΕΖΗΘΙΚΛΜΝΞΟΠΡΣΤΥΦΧΨΩ]{2,4}$/i
+  const digitsRe = /^\d{3,4}$/
+
+  for (let i = 0; i < parts.length; i++) {
+    // Case 1: plate in one token e.g. "IAE6104"
+    if (plateRe.test(parts[i])) {
+      const truck = parts[i]
+      const client = [...parts.slice(0, i), ...parts.slice(i + 1)].join(' ')
+      return { truck, client }
+    }
+    // Case 2: plate split across two tokens e.g. "NXT 297" or "E6050BT" (letters+digits in one)
+    if (plateStartRe.test(parts[i]) && i + 1 < parts.length && digitsRe.test(parts[i + 1])) {
+      const truck = parts[i] + parts[i + 1]
+      const client = [...parts.slice(0, i), ...parts.slice(i + 2)].join(' ')
+      return { truck, client }
+    }
+    // Case 3: alphanumeric like "E6050BT"
+    if (/^[A-Z]\d{3,4}[A-Z]{1,2}$/i.test(parts[i])) {
+      const truck = parts[i]
+      const client = [...parts.slice(0, i), ...parts.slice(i + 1)].join(' ')
+      return { truck, client }
+    }
+  }
+  // No plate found — whole thing is client
+  return { truck: '', client: raw.trim() }
+}
+
+// Parse Excel date value (JS Date object from xlsx, or number serial, or string)
+function toISO(val) {
+  if (!val) return null
+  if (val instanceof Date) return format(val, 'yyyy-MM-dd')
+  if (typeof val === 'number' && val > 40000) {
+    const d = new Date((val - 25569) * 86400 * 1000)
+    return format(d, 'yyyy-MM-dd')
+  }
+  if (typeof val === 'string' && val.match(/\d{4}-\d{2}-\d{2}/)) return val.substring(0, 10)
   return null
 }
 
 // Parse Excel workbook into ferry rows
 function parseExcelToFerries(workbook) {
   const results = []
-  const sheetName = workbook.SheetNames[0]
-  const ws = workbook.Sheets[sheetName]
-  const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' })
+  const ws = workbook.Sheets[workbook.SheetNames[0]]
+  // cellDates:true so dates come as JS Date objects
+  const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null, raw: false })
 
-  let currentCompany = null
+  let currentCompany = null  // set by section header rows
 
   for (const row of rows) {
-    // Skip empty rows
-    if (row.every(c => c === '' || c === null || c === undefined)) continue
+    if (!row || row.every(c => c === null || c === '')) continue
 
-    const col0 = String(row[0] || '').trim()
-    const col1 = String(row[1] || '').trim()
-    const col2 = String(row[2] || '').trim()
-    const col3 = String(row[3] || '').trim()
-    const col4 = String(row[4] || '').trim()
+    const c0 = row[0]  // date or null
+    const c1 = String(row[1] || '').trim()
+    const c2 = String(row[2] || '').trim()
+    const c3 = row[3]
+    const c4 = row[4]
 
-    // Detect section header rows (month name / company name)
-    if (!col0 || isNaN(Number(col0))) {
-      // Try to detect company from this row
-      const rowJoined = row.join(' ')
-      const detected = detectCompany(rowJoined, '')
-      if (detected) currentCompany = detected
-      // Detect Blue Star explicitly
-      if (rowJoined.toLowerCase().includes('blue star')) currentCompany = 'Blue Star'
-      if (rowJoined.toLowerCase().includes('hfs') || rowJoined.toLowerCase().includes('grimaldi')) {
-        // next rows will tell us — keep scanning
-      }
+    // Header row: no date in col0, contains company name
+    if (!c0 || (typeof c0 === 'string' && isNaN(Date.parse(c0)))) {
+      const joined = row.map(v => String(v || '')).join(' ').toLowerCase()
+      if (joined.includes('blue star')) currentCompany = 'Blue Star'
+      else if (joined.includes('grimaldi')) currentCompany = 'Grimaldi'
+      else if (joined.includes('hfs') || joined.includes('hellenic')) currentCompany = 'Hellenic Ferry Services'
       continue
     }
 
-    // Numeric col0 = date serial
-    const dateSerial = Number(col0)
-    if (dateSerial < 40000 || dateSerial > 60000) continue // sanity check
-
-    const departure = excelDateToISO(dateSerial)
+    const departure = toISO(c0)
     if (!departure) continue
 
-    // Two formats:
-    // Blue Star: | date | route | plate | client | amount |
-    // Grimaldi:  | date | route+plate (combined) | client | amount |
+    let route, truck, client, total_cost, company
 
-    let route = '', truck = '', notes = '', total_cost = null, company = currentCompany
+    // Detect format by checking col2:
+    // Blue Star format:  col1=route, col2=plate, col3=client(str), col4=amount
+    // Grimaldi format:   col1="route COMPANY", col2="plate client", col3=amount, col4=null
+    const col3isNum = c3 !== null && !isNaN(parseFloat(c3))
+    const col4isNum = c4 !== null && !isNaN(parseFloat(c4))
 
-    if (col2 && /^[A-ZΑΒΓΔΕΖΗΘΙΚΛΜΝΞΟΠΡΣΤΥΦΧΨΩABCDEFGHIJKLMNOPQRSTUVWXYZ]{2,3}\d/.test(col2.replace(/\s/,''))) {
-      // Blue Star style: col1=route, col2=plate, col3=client, col4=amount
-      route = parseRoute(col1)
-      truck = col2
-      notes = col3
-      total_cost = parseFloat(col4) || null
-      if (!company) company = 'Blue Star'
+    if (col4isNum || (!col3isNum && col4isNum === false && c2 && !c2.includes(' '))) {
+      // Blue Star: c2 is a single-token plate, c3=client string, c4=amount
+      const { route: r } = parseRouteField(c1)
+      route = r
+      truck = c2.replace(/\s+/g, '').toUpperCase()
+      client = String(c3 || '').trim()
+      total_cost = parseFloat(c4) || null
+      company = currentCompany || 'Blue Star'
     } else {
-      // Grimaldi style: col1 = "route GRIMALDI/ATTICA", col2 = "plate client", col3 = amount
-      const col1parts = col1.split(/\s+/)
-      // Route is first 2 words, rest is company modifier
-      route = parseRoute(col1parts.slice(0, 2).join(' '))
-      const companyMod = col1parts.slice(2).join(' ')
-      if (companyMod.toLowerCase().includes('grimaldi')) company = 'Grimaldi'
-      else if (companyMod.toLowerCase().includes('attica')) company = 'Attica'
-
-      // col2: "PLATE CLIENT" — plate is first token (matches plate pattern)
-      const col2parts = col2.split(/\s+/)
-      const plateIdx = col2parts.findIndex(p => /[A-Z]{2,3}[\s-]?\d{3,4}/.test(p) || /[A-ZΑΒΓΔ]{2,3}\d{3,4}/.test(p))
-      if (plateIdx >= 0) {
-        truck = col2parts.slice(plateIdx, plateIdx + 1).join('')
-        // check if next token is also part of plate (e.g. "NXT 297")
-        if (plateIdx + 1 < col2parts.length && /^\d+$/.test(col2parts[plateIdx + 1])) {
-          truck = col2parts[plateIdx] + col2parts[plateIdx + 1]
-          notes = col2parts.slice(plateIdx + 2).join(' ')
-        } else {
-          notes = col2parts.slice(plateIdx + 1).join(' ')
-        }
-        if (plateIdx > 0) notes = col2parts.slice(0, plateIdx).join(' ') + ' ' + notes
-      } else {
-        notes = col2
-      }
-
-      total_cost = parseFloat(col3) || null
-      if (!company) company = 'Grimaldi'
+      // Grimaldi / HFS: c1="route GRIMALDI", c2="plate client", c3=amount
+      const { route: r, company: detectedCo } = parseRouteField(c1)
+      route = r
+      const { truck: t, client: cl } = splitPlateClient(c2)
+      truck = t.replace(/\s+/g, '').toUpperCase()
+      client = cl
+      total_cost = parseFloat(c3) || null
+      company = detectedCo || currentCompany || 'Hellenic Ferry Services'
     }
-
-    // Normalize route to match ROUTES list where possible
-    const matched = ROUTES.find(r => r !== '__other__' && (
-      r === route ||
-      r.replace(/\s/g,'').toLowerCase() === route.replace(/\s/g,'').toLowerCase()
-    ))
-    if (matched) route = matched
 
     results.push({
       departure,
-      route: route || col1,
-      truck: truck.replace(/\s+/g, '').toUpperCase() || null,
-      meters: 16.5,
+      route,
+      truck:       truck || null,
+      meters:      16.5,
       price_per_m: null,
-      total_cost,
-      company: company || 'Hellenic Ferry Services',
+      total_cost:  total_cost || null,
+      company,
       booking_ref: null,
-      notes: notes.trim() || null,
+      notes:       client || null,
     })
   }
 
@@ -344,7 +342,7 @@ export default function Ferries() {
     const reader = new FileReader()
     reader.onload = ev => {
       const data = new Uint8Array(ev.target.result)
-      const wb = XLSX.read(data, { type: 'array' })
+      const wb = XLSX.read(data, { type: 'array', cellDates: true })
       const rows = parseExcelToFerries(wb)
       setImportRows(rows)
       setImportDone(null)
