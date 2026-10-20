@@ -180,8 +180,17 @@ export default function Fleet() {
 
   const filtered = trucks.filter(t => {
     const q = search.toLowerCase()
-    return !q || [t.tr, t.driver, t.phone].some(v => v?.toLowerCase().includes(q))
+    return !q || [t.tr, t.tractor, t.trailer1, t.driver, t.phone].some(v => v?.toLowerCase().includes(q))
   })
+
+  // Ομαδοποίηση ανά οδηγό
+  const byDriver = {}
+  filtered.forEach(t => {
+    const key = t.driver?.trim() || '—'
+    if (!byDriver[key]) byDriver[key] = []
+    byDriver[key].push(t)
+  })
+  const driverGroups = Object.entries(byDriver).sort(([a], [b]) => a.localeCompare(b, 'el'))
 
   const availMap = {}
   avail.forEach(a => { if (!availMap[a.tr]) availMap[a.tr] = a })
@@ -227,138 +236,151 @@ export default function Fleet() {
       {loading ? (
         <p className="text-slate-400">Φόρτωση...</p>
       ) : (
-        <div className="space-y-2">
-          {filtered.map(t => {
-            const av = availMap[t.tr]
-            const orderCount = allOrders.filter(o => normPlate(o.truck) === normPlate(t.tr)).length
-            const isOpen = !!expanded[t.id]
-
-            return (
-              <div key={t.id} id={`truck-${t.id}`} className="bg-slate-800 border border-slate-700 rounded-2xl overflow-hidden">
-                {/* ── Collapsed header — always visible ── */}
+        <div className="space-y-4">
+          {driverGroups.map(([driverName, driverTrucks]) => (
+            <div key={driverName} className="space-y-1.5">
+              {/* Driver header */}
+              <div className="flex items-center justify-between px-1">
+                <div className="flex items-center gap-2">
+                  <span className="text-slate-300 font-semibold text-sm">👤 {driverName}</span>
+                  <span className="text-slate-600 text-xs">{driverTrucks.length} φορτηγό</span>
+                </div>
                 <button
-                  className="w-full flex items-center gap-3 px-4 py-3 hover:bg-slate-700/50 transition-colors text-left"
-                  onClick={() => toggleExpand(t.id)}
+                  onClick={() => { setEditing(null); setForm({ ...EMPTY_TRUCK, driver: driverName === '—' ? '' : driverName }); setShowModal(true) }}
+                  className="text-xs text-blue-400 hover:text-blue-300 px-2 py-1 rounded-lg hover:bg-slate-800 transition-colors"
                 >
-                  <span className="text-xl">🚚</span>
-                  <div className="flex-1 min-w-0">
-                    <span className="text-white font-bold">{t.tr}</span>
-                    <span className="text-slate-400 text-sm ml-2">{t.driver || '—'}</span>
-                    {orderCount > 0 && (
-                      <span className="ml-2 text-xs text-slate-500">{orderCount} παρ.</span>
-                    )}
-                  </div>
-                  {av?.nt && (
-                    <span className="text-xs text-green-400 shrink-0 hidden sm:inline">{av.nt}</span>
-                  )}
-                  <span className="text-slate-500 text-sm ml-1">{isOpen ? '▲' : '▼'}</span>
+                  + Φορτηγό
                 </button>
-
-                {/* ── Expanded body ── */}
-                {isOpen && (
-                  <div className="px-4 pb-4 space-y-3 border-t border-slate-700/50">
-                    {/* Actions */}
-                    <div className="flex gap-2 pt-3">
-                      <button
-                        onClick={() => openHistory(t)}
-                        className="px-3 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-300 hover:text-white text-xs font-medium transition-colors"
-                      >
-                        📋 Ιστορικό {orderCount > 0 && <span className="ml-1 text-slate-500">({orderCount})</span>}
-                      </button>
-                      <button onClick={() => openEdit(t)}
-                        className="px-3 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-300 hover:text-white text-xs transition-colors">
-                        ✏️ Επεξεργασία
-                      </button>
-                      <button onClick={() => handleDelete(t.id)}
-                        className="px-3 py-1.5 rounded-lg hover:bg-red-900/40 text-slate-500 hover:text-red-400 text-xs transition-colors ml-auto">
-                        🗑️ Διαγραφή
-                      </button>
-                    </div>
-
-                    {/* Πινακίδες */}
-                    {(t.tractor || t.trailer1) && (
-                      <div className="grid grid-cols-2 gap-2">
-                        {t.tractor && (
-                          <div className="bg-slate-700/60 rounded-xl p-2.5">
-                            <p className="text-slate-400 text-xs mb-0.5">Τράκτορας</p>
-                            <p className="text-white font-mono font-bold text-sm">{t.tractor}</p>
-                          </div>
-                        )}
-                        {t.trailer1 && (
-                          <div className="bg-slate-700/60 rounded-xl p-2.5">
-                            <p className="text-slate-400 text-xs mb-0.5">Θάλαμος{t.trailer2 ? ' 1' : ''}</p>
-                            <p className="text-white font-mono font-bold text-sm">{t.trailer1}</p>
-                          </div>
-                        )}
-                        {t.trailer2 && (
-                          <div className="bg-slate-700/60 rounded-xl p-2.5">
-                            <p className="text-slate-400 text-xs mb-0.5">Θάλαμος 2</p>
-                            <p className="text-white font-mono font-bold text-sm">{t.trailer2}</p>
-                          </div>
-                        )}
-                      </div>
-                    )}
-
-                    {/* Info grid */}
-                    <div className="grid grid-cols-3 gap-2">
-                      <div className="bg-slate-700 rounded-xl p-3 text-center">
-                        <p className="text-slate-400 text-xs">Χωρητικότητα</p>
-                        <p className="text-white font-bold">{t.ldm || '—'} LDM</p>
-                      </div>
-                      <div className="bg-slate-700 rounded-xl p-3 text-center">
-                        <p className="text-slate-400 text-xs">Φορτίο</p>
-                        <p className="text-white font-bold">{t.payload ? `${t.payload} kg` : '—'}</p>
-                      </div>
-                      <div className="bg-slate-700 rounded-xl p-3 text-center">
-                        <p className="text-slate-400 text-xs">Θερμ/σία</p>
-                        <p className="text-white font-bold">{t.tmp || '—'}</p>
-                      </div>
-                    </div>
-
-                    {t.phone && (
-                      <p className="text-slate-500 text-xs">📞 {t.phone}</p>
-                    )}
-
-                    {av && (
-                      <div className="bg-slate-700/50 rounded-xl px-3 py-2 text-xs text-slate-400">
-                        📍 <span className="text-white">{av.ct}</span>
-                        {av.co && <> → <span className="text-blue-300">{av.co}</span></>}
-                        {av.fr && <span className="ml-2 text-green-400">Ελεύθερο: {av.fr}</span>}
-                        {av.nt && <span className="ml-2 text-slate-300">· {av.nt}</span>}
-                      </div>
-                    )}
-
-                    {t.notes && <p className="text-slate-500 text-xs italic">{t.notes}</p>}
-
-                    {/* Κόστος καραβιών */}
-                    {(() => {
-                      const tFerries = ferries.filter(f => normPlate(f.truck) === normPlate(t.tr))
-                      if (tFerries.length === 0) return null
-                      const total = tFerries.reduce((s, f) => s + (parseFloat(f.total_cost)||0), 0)
-                      return (
-                        <div className="bg-blue-900/20 border border-blue-700/40 rounded-xl px-3 py-2 space-y-1">
-                          <p className="text-blue-300 text-xs font-medium">⛴️ Κόστος Καραβιών</p>
-                          <div className="flex items-center justify-between">
-                            <span className="text-slate-400 text-xs">{tFerries.length} κρατήσεις</span>
-                            <span className="text-green-400 font-bold text-sm">{total.toLocaleString('el-GR', { minimumFractionDigits: 2 })} €</span>
-                          </div>
-                          {['Hellenic Sea Ferries','Blue Star'].map(c => {
-                            const ct = tFerries.filter(f => f.company === c).reduce((s,f) => s+(parseFloat(f.total_cost)||0), 0)
-                            return ct > 0 ? (
-                              <div key={c} className="flex items-center justify-between text-xs">
-                                <span className="text-slate-500">{c}</span>
-                                <span className="text-slate-300">{ct.toLocaleString('el-GR', { minimumFractionDigits: 2 })} €</span>
-                              </div>
-                            ) : null
-                          })}
-                        </div>
-                      )
-                    })()}
-                  </div>
-                )}
               </div>
-            )
-          })}
+
+              {driverTrucks.map(t => {
+                const av = availMap[t.tr]
+                const orderCount = allOrders.filter(o => normPlate(o.truck) === normPlate(t.tr)).length
+                const isOpen = !!expanded[t.id]
+                const displayPlate = t.tractor || t.tr
+
+                return (
+                  <div key={t.id} id={`truck-${t.id}`} className="bg-slate-800 border border-slate-700 rounded-2xl overflow-hidden">
+                    {/* Collapsed header */}
+                    <button
+                      className="w-full flex items-center gap-3 px-4 py-3 hover:bg-slate-700/50 transition-colors text-left"
+                      onClick={() => toggleExpand(t.id)}
+                    >
+                      <span className="text-xl">🚚</span>
+                      <div className="flex-1 min-w-0 flex items-center gap-2">
+                        <span className="text-white font-bold font-mono">{displayPlate || '—'}</span>
+                        {t.trailer1 && (
+                          <span className="text-slate-500 font-mono text-xs">/ {t.trailer1}</span>
+                        )}
+                        {orderCount > 0 && (
+                          <span className="text-xs text-slate-600">{orderCount} παρ.</span>
+                        )}
+                      </div>
+                      {av?.nt && (
+                        <span className="text-xs text-green-400 shrink-0 hidden sm:inline">{av.nt}</span>
+                      )}
+                      <span className="text-slate-500 text-sm ml-1">{isOpen ? '▲' : '▼'}</span>
+                    </button>
+
+                    {/* Expanded body */}
+                    {isOpen && (
+                      <div className="px-4 pb-4 space-y-3 border-t border-slate-700/50">
+                        <div className="flex gap-2 pt-3">
+                          <button onClick={() => openHistory(t)}
+                            className="px-3 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-300 hover:text-white text-xs font-medium transition-colors">
+                            📋 Ιστορικό {orderCount > 0 && <span className="ml-1 text-slate-500">({orderCount})</span>}
+                          </button>
+                          <button onClick={() => openEdit(t)}
+                            className="px-3 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-300 hover:text-white text-xs transition-colors">
+                            ✏️ Επεξεργασία
+                          </button>
+                          <button onClick={() => handleDelete(t.id)}
+                            className="px-3 py-1.5 rounded-lg hover:bg-red-900/40 text-slate-500 hover:text-red-400 text-xs transition-colors ml-auto">
+                            🗑️ Διαγραφή
+                          </button>
+                        </div>
+
+                        {(t.tractor || t.trailer1) && (
+                          <div className="grid grid-cols-2 gap-2">
+                            {t.tractor && (
+                              <div className="bg-slate-700/60 rounded-xl p-2.5">
+                                <p className="text-slate-400 text-xs mb-0.5">Τράκτορας</p>
+                                <p className="text-white font-mono font-bold text-sm">{t.tractor}</p>
+                              </div>
+                            )}
+                            {t.trailer1 && (
+                              <div className="bg-slate-700/60 rounded-xl p-2.5">
+                                <p className="text-slate-400 text-xs mb-0.5">Θάλαμος{t.trailer2 ? ' 1' : ''}</p>
+                                <p className="text-white font-mono font-bold text-sm">{t.trailer1}</p>
+                              </div>
+                            )}
+                            {t.trailer2 && (
+                              <div className="bg-slate-700/60 rounded-xl p-2.5">
+                                <p className="text-slate-400 text-xs mb-0.5">Θάλαμος 2</p>
+                                <p className="text-white font-mono font-bold text-sm">{t.trailer2}</p>
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        <div className="grid grid-cols-3 gap-2">
+                          <div className="bg-slate-700 rounded-xl p-3 text-center">
+                            <p className="text-slate-400 text-xs">Χωρητικότητα</p>
+                            <p className="text-white font-bold">{t.ldm || '—'} LDM</p>
+                          </div>
+                          <div className="bg-slate-700 rounded-xl p-3 text-center">
+                            <p className="text-slate-400 text-xs">Φορτίο</p>
+                            <p className="text-white font-bold">{t.payload ? `${t.payload} kg` : '—'}</p>
+                          </div>
+                          <div className="bg-slate-700 rounded-xl p-3 text-center">
+                            <p className="text-slate-400 text-xs">Θερμ/σία</p>
+                            <p className="text-white font-bold">{t.tmp || '—'}</p>
+                          </div>
+                        </div>
+
+                        {t.phone && <p className="text-slate-500 text-xs">📞 {t.phone}</p>}
+
+                        {av && (
+                          <div className="bg-slate-700/50 rounded-xl px-3 py-2 text-xs text-slate-400">
+                            📍 <span className="text-white">{av.ct}</span>
+                            {av.co && <> → <span className="text-blue-300">{av.co}</span></>}
+                            {av.fr && <span className="ml-2 text-green-400">Ελεύθερο: {av.fr}</span>}
+                            {av.nt && <span className="ml-2 text-slate-300">· {av.nt}</span>}
+                          </div>
+                        )}
+
+                        {t.notes && <p className="text-slate-500 text-xs italic">{t.notes}</p>}
+
+                        {(() => {
+                          const tFerries = ferries.filter(f => normPlate(f.truck) === normPlate(t.tr))
+                          if (tFerries.length === 0) return null
+                          const total = tFerries.reduce((s, f) => s + (parseFloat(f.total_cost)||0), 0)
+                          return (
+                            <div className="bg-blue-900/20 border border-blue-700/40 rounded-xl px-3 py-2 space-y-1">
+                              <p className="text-blue-300 text-xs font-medium">⛴️ Κόστος Καραβιών</p>
+                              <div className="flex items-center justify-between">
+                                <span className="text-slate-400 text-xs">{tFerries.length} κρατήσεις</span>
+                                <span className="text-green-400 font-bold text-sm">{total.toLocaleString('el-GR', { minimumFractionDigits: 2 })} €</span>
+                              </div>
+                              {['Hellenic Sea Ferries','Blue Star'].map(c => {
+                                const ct = tFerries.filter(f => f.company === c).reduce((s,f) => s+(parseFloat(f.total_cost)||0), 0)
+                                return ct > 0 ? (
+                                  <div key={c} className="flex items-center justify-between text-xs">
+                                    <span className="text-slate-500">{c}</span>
+                                    <span className="text-slate-300">{ct.toLocaleString('el-GR', { minimumFractionDigits: 2 })} €</span>
+                                  </div>
+                                ) : null
+                              })}
+                            </div>
+                          )
+                        })()}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          ))}
         </div>
       )}
 
