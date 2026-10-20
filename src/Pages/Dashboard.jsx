@@ -14,6 +14,15 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true)
   const [trucks, setTrucks] = useState([])
   const [avail, setAvail] = useState([])
+  const [editModal, setEditModal] = useState(null) // { tr, alias, availId? }
+  const [editForm, setEditForm] = useState({ status: 'Εν κινήσει', location: '', notes: '' })
+  const [editSaving, setEditSaving] = useState(false)
+
+  const AVAIL_STATUSES = [
+    { key: 'Διαθέσιμο',  color: 'bg-green-900/60 text-green-300 border-green-700' },
+    { key: 'Εν κινήσει', color: 'bg-cyan-900/60 text-cyan-300 border-cyan-700' },
+    { key: 'Service',    color: 'bg-red-900/60 text-red-300 border-red-700' },
+  ]
 
   useEffect(() => { loadAll() }, [])
 
@@ -35,6 +44,34 @@ export default function Dashboard() {
     setAvail(av || [])
     if (mem) { setMemo(mem.content || ''); setMemoId(mem.id) }
     setLoading(false)
+  }
+
+  function openEdit(truck) {
+    const todayStr = format(new Date(), 'yyyy-MM-dd')
+    const rec = avail.find(a => a.tr === truck.tr)
+    setEditForm({
+      status:   rec?.nt || truck.status || 'Εν κινήσει',
+      location: rec?.ct || truck.location || '',
+      notes:    rec?.co || truck.notes || '',
+    })
+    setEditModal({ tr: truck.tr, alias: truck.alias, availId: rec?.id || null, todayStr })
+  }
+
+  async function saveEdit() {
+    if (!editModal) return
+    setEditSaving(true)
+    const payload = { tr: editModal.tr, fr: editModal.todayStr, nt: editForm.status, ct: editForm.location, co: editForm.notes }
+    if (editModal.availId) {
+      await supabase.from('avail').update(payload).eq('id', editModal.availId)
+    } else {
+      await supabase.from('avail').insert([payload])
+    }
+    setEditSaving(false)
+    setEditModal(null)
+    // Reload avail
+    const todayStr = format(new Date(), 'yyyy-MM-dd')
+    const { data } = await supabase.from('avail').select('*').eq('fr', todayStr)
+    setAvail(data || [])
   }
 
   async function saveMemo() {
@@ -162,7 +199,7 @@ export default function Dashboard() {
               <p className="text-xs font-semibold text-slate-400 mb-2">🇮🇹 Ιταλία <span className="text-white ml-1">{trIT.length}</span></p>
               {trIT.length === 0 ? <p className="text-slate-500 text-xs">—</p> : (
                 <div className="space-y-1.5">
-                  {trIT.map(t => <TruckRow key={t.id} truck={t} />)}
+                  {trIT.map(t => <TruckRow key={t.id} truck={t} onEdit={() => openEdit(t)} />)}
                 </div>
               )}
             </div>
@@ -171,7 +208,7 @@ export default function Dashboard() {
               <p className="text-xs font-semibold text-slate-400 mb-2">🇬🇷 Ελλάδα <span className="text-white ml-1">{trGR.length}</span></p>
               {trGR.length === 0 ? <p className="text-slate-500 text-xs">—</p> : (
                 <div className="space-y-1.5">
-                  {trGR.map(t => <TruckRow key={t.id} truck={t} />)}
+                  {trGR.map(t => <TruckRow key={t.id} truck={t} onEdit={() => openEdit(t)} />)}
                 </div>
               )}
             </div>
@@ -180,7 +217,7 @@ export default function Dashboard() {
               <p className="text-xs font-semibold text-slate-400 mb-2">🔀 Άλλο <span className="text-white ml-1">{trOther.length}</span></p>
               {trOther.length === 0 ? <p className="text-slate-500 text-xs">—</p> : (
                 <div className="space-y-1.5">
-                  {trOther.map(t => <TruckRow key={t.id} truck={t} />)}
+                  {trOther.map(t => <TruckRow key={t.id} truck={t} onEdit={() => openEdit(t)} />)}
                 </div>
               )}
             </div>
@@ -254,6 +291,70 @@ export default function Dashboard() {
           )}
         </div>
       </div>
+
+      {/* ── EDIT AVAIL MODAL ── */}
+      {editModal && (
+        <div className="fixed inset-0 bg-black/60 flex items-end sm:items-center justify-center z-50 p-0 sm:p-4"
+          onClick={e => { if (e.target === e.currentTarget) setEditModal(null) }}>
+          <div className="bg-slate-800 rounded-t-3xl sm:rounded-3xl border border-slate-700 w-full sm:max-w-sm p-6 space-y-4">
+            <div className="flex items-start justify-between">
+              <div>
+                <h2 className="text-lg font-bold text-white">🚛 {editModal.alias || editModal.tr}</h2>
+                <p className="text-slate-400 text-sm">Τοποθεσία σήμερα</p>
+              </div>
+              <button onClick={() => setEditModal(null)} className="text-slate-500 hover:text-white text-xl leading-none">✕</button>
+            </div>
+
+            {/* Status */}
+            <div>
+              <label className="block text-xs text-slate-400 mb-2">Κατάσταση</label>
+              <div className="grid grid-cols-3 gap-2">
+                {AVAIL_STATUSES.map(s => (
+                  <button key={s.key}
+                    onClick={() => setEditForm(f => ({ ...f, status: s.key }))}
+                    className={`py-2 px-2 rounded-xl text-xs border transition-colors ${
+                      editForm.status === s.key ? s.color + ' font-bold' : 'bg-slate-700 text-slate-400 border-slate-600 hover:bg-slate-600'
+                    }`}
+                  >{s.key}</button>
+                ))}
+              </div>
+            </div>
+
+            {/* Location */}
+            <div>
+              <label className="block text-xs text-slate-400 mb-1">Τοποθεσία</label>
+              <input
+                value={editForm.location}
+                onChange={e => setEditForm(f => ({ ...f, location: e.target.value }))}
+                placeholder="π.χ. Μπολόνια, Μιλάνο..."
+                className="w-full bg-slate-700 border border-slate-600 rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500"
+              />
+            </div>
+
+            {/* Notes */}
+            <div>
+              <label className="block text-xs text-slate-400 mb-1">Σημειώσεις</label>
+              <input
+                value={editForm.notes}
+                onChange={e => setEditForm(f => ({ ...f, notes: e.target.value }))}
+                placeholder="π.χ. Πελάτης, φορτίο..."
+                className="w-full bg-slate-700 border border-slate-600 rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500"
+              />
+            </div>
+
+            <div className="flex gap-2 pt-1">
+              <button onClick={() => setEditModal(null)}
+                className="flex-1 bg-slate-700 hover:bg-slate-600 text-slate-300 py-2.5 rounded-xl text-sm transition-colors">
+                Ακύρωση
+              </button>
+              <button onClick={saveEdit} disabled={editSaving}
+                className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white py-2.5 rounded-xl text-sm font-medium transition-colors">
+                {editSaving ? '...' : '💾 Αποθήκευση'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -286,7 +387,7 @@ function StatusBadge({ status }) {
   )
 }
 
-function TruckRow({ truck }) {
+function TruckRow({ truck, onEdit }) {
   const statusColor = {
     'Διαθέσιμο':  'text-green-400',
     'Εν κινήσει': 'text-cyan-400',
@@ -297,16 +398,23 @@ function TruckRow({ truck }) {
   }
   const sourceIcon = truck.source === 'avail' ? '✏️' : '📦'
   return (
-    <div className="flex items-start gap-2 bg-slate-800 rounded-lg px-2.5 py-1.5">
+    <div className="flex items-start gap-2 bg-slate-800 rounded-lg px-2.5 py-1.5 group">
       <span className="text-xs mt-0.5">{sourceIcon}</span>
       <div className="min-w-0 flex-1">
         <p className="text-white text-xs font-semibold truncate">{truck.alias || truck.tr}</p>
         {truck.location && <p className="text-slate-400 text-xs truncate">{truck.location}</p>}
         {truck.notes && <p className="text-slate-500 text-xs truncate">{truck.notes}</p>}
       </div>
-      <span className={`text-xs shrink-0 font-medium ${statusColor[truck.status] || 'text-slate-400'}`}>
-        {truck.status}
-      </span>
+      <div className="flex items-center gap-1 shrink-0">
+        <span className={`text-xs font-medium ${statusColor[truck.status] || 'text-slate-400'}`}>
+          {truck.status}
+        </span>
+        <button
+          onClick={onEdit}
+          className="opacity-0 group-hover:opacity-100 text-slate-500 hover:text-white bg-slate-700 hover:bg-slate-600 rounded-md px-1.5 py-0.5 text-xs transition-all ml-1"
+          title="Επεξεργασία"
+        >✏️</button>
+      </div>
     </div>
   )
 }
