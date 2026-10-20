@@ -7,7 +7,7 @@ import {
 } from 'date-fns'
 import { el } from 'date-fns/locale'
 
-const COMPANIES = ['Hellenic Ferry Services', 'Blue Star']
+const COMPANIES = ['Hellenic Sea Ferries', 'Blue Star']
 
 // Map κωδικών λιμανιών → ελληνικά
 const PORT_MAP = {
@@ -33,7 +33,7 @@ function parseRouteField(raw) {
 
   let company = null
   const rest = parts.slice(2).join(' ').toLowerCase()
-  if (rest.includes('grimaldi')) company = 'Hellenic Ferry Services'
+  if (rest.includes('grimaldi')) company = 'Hellenic Sea Ferries'
   else if (rest.includes('attica') || rest.includes('attika')) company = 'Blue Star'
 
   // Normalize to ROUTES list
@@ -79,73 +79,85 @@ function splitPlateClient(raw) {
 }
 
 // Parse Excel workbook into ferry rows
+// Parse a date cell from the clean Excel format
+// Handles: DD/MM/YYYY string, ISO string, Date object, Excel serial number
+function parseDateCell(v) {
+  if (!v) return null
+  if (v instanceof Date) {
+    const y = v.getUTCFullYear(), m = String(v.getUTCMonth()+1).padStart(2,'0'), d = String(v.getUTCDate()).padStart(2,'0')
+    return `${y}-${m}-${d}`
+  }
+  if (typeof v === 'string') {
+    // DD/MM/YYYY or DD/MM/YY
+    const ddmm = v.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})/)
+    if (ddmm) {
+      const day = ddmm[1].padStart(2,'0'), mon = ddmm[2].padStart(2,'0')
+      let yr = ddmm[3]
+      if (yr.length === 2) yr = '20' + yr
+      return `${yr}-${mon}-${day}`
+    }
+    // ISO: 2026-10-02 or 2026-10-02T...
+    if (v.match(/^\d{4}-\d{2}-\d{2}/)) return v.substring(0, 10)
+  }
+  if (typeof v === 'number' && v > 40000 && v < 60000) {
+    const d = new Date(Math.round((v - 25569) * 86400 * 1000))
+    const y = d.getUTCFullYear(), mo = String(d.getUTCMonth()+1).padStart(2,'0'), dy = String(d.getUTCDate()).padStart(2,'0')
+    return `${y}-${mo}-${dy}`
+  }
+  return null
+}
+
+// Normalize company name from Greek clean-format column
+function normalizeCompany(raw) {
+  if (!raw) return null
+  const s = String(raw).trim().toLowerCase()
+  if (s.includes('blue star') || s.includes('attica') || s.includes('bluestar')) return 'Blue Star'
+  if (s.includes('hellenic') || s.includes('grimaldi') || s.includes('hfs')) return 'Hellenic Sea Ferries'
+  // Return as-is (capitalized) if recognized company name
+  if (raw.trim().length > 0) return raw.trim()
+  return null
+}
+
+// Parse clean Excel format:
+// Row 0 (or first row): headers — Ημερομηνία | Δρομολόγιο | Πινακίδα | Εταιρεία | Πελάτης | Κόστος (€)
+// Section header rows: company name (bold/colored) — skip these (no valid date in col0)
+// Data rows: DD/MM/YYYY | Greek route | plate | company | client | numeric cost
 function parseExcelToFerries(workbook) {
   const results = []
   const ws = workbook.Sheets[workbook.SheetNames[0]]
-  // raw:true → numbers stay numbers, dates stay Date objects (with cellDates:true)
   const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null, raw: true })
 
-  let currentCompany = null
-
   for (const row of rows) {
-    if (!row || row.every(c => c === null || c === undefined)) continue
+    if (!row || row.every(c => c === null || c === undefined || c === '')) continue
 
-    const c0 = row[0]  // Date object or null
-    const c1 = String(row[1] || '').trim()
-    const c2 = String(row[2] || '').trim()
-    const c3 = row[3]
-    const c4 = row[4]
+    const c0 = row[0]   // Date: DD/MM/YYYY or Excel date
+    const c1 = String(row[1] || '').trim()   // Route (already Greek)
+    const c2 = String(row[2] || '').trim()   // Plate / truck
+    const c3 = row[3]                         // Company
+    const c4 = row[4]                         // Client / notes
+    const c5 = row[5]                         // Cost (€)
 
-    // c0 can be: JS Date, ISO string (from cellDates+raw), number serial, or text
-    function parseDateCell(v) {
-      if (!v) return null
-      if (v instanceof Date) {
-        // Use UTC values to avoid timezone shift
-        const y = v.getUTCFullYear(), m = String(v.getUTCMonth()+1).padStart(2,'0'), d = String(v.getUTCDate()).padStart(2,'0')
-        return `${y}-${m}-${d}`
-      }
-      if (typeof v === 'string' && v.match(/^\d{4}-\d{2}-\d{2}/)) return v.substring(0, 10)
-      if (typeof v === 'number' && v > 40000 && v < 60000) {
-        // Serial: integer part = days, no timezone issue
-        const d = new Date(Math.round((v - 25569) * 86400 * 1000))
-        const y = d.getUTCFullYear(), mo = String(d.getUTCMonth()+1).padStart(2,'0'), dy = String(d.getUTCDate()).padStart(2,'0')
-        return `${y}-${mo}-${dy}`
-      }
-      return null
-    }
+    // Skip header row and section header rows (no valid date in col0)
     const departure = parseDateCell(c0)
-    if (!departure) {
-      const joined = row.map(v => String(v || '')).join(' ').toLowerCase()
-      if (joined.includes('blue star')) currentCompany = 'Blue Star'
-      else if (joined.includes('grimaldi')) currentCompany = 'Hellenic Ferry Services'
-      else if (joined.includes('hfs') || joined.includes('hellenic')) currentCompany = 'Hellenic Ferry Services'
-      continue
-    }
+    if (!departure) continue
 
-    let route, truck, client, total_cost, company
+    // Skip rows with no route (totals rows, etc.)
+    if (!c1) continue
 
-    // Blue Star: col4 is a number (amount in last column)
-    // Grimaldi:  col3 is a number (amount), col4 is null
-    const c4isNum = typeof c4 === 'number'
-    const c3isNum = typeof c3 === 'number'
+    const route = c1  // Already in Greek from clean format
+    const truck = c2 ? c2.replace(/\s+/g, '').toUpperCase() : null
+    const company = normalizeCompany(c3) || 'Blue Star'
+    const client = c4 ? String(c4).trim() : null
 
-    if (c4isNum) {
-      // Blue Star format: route | plate | client | amount
-      const { route: r } = parseRouteField(c1)
-      route = r
-      truck = c2.replace(/\s+/g, '').toUpperCase()
-      client = String(c3 || '').trim()
-      total_cost = c4
-      company = currentCompany || 'Blue Star'
-    } else {
-      // Grimaldi/HFS format: "route COMPANY" | "plate client" | amount
-      const { route: r, company: detectedCo } = parseRouteField(c1)
-      route = r
-      const { truck: t, client: cl } = splitPlateClient(c2)
-      truck = t.replace(/\s+/g, '').toUpperCase()
-      client = cl
-      total_cost = c3isNum ? c3 : null
-      company = detectedCo || currentCompany || 'Hellenic Ferry Services'
+    // Cost: number directly or parse string like "1.234,56" or "1234.56"
+    let total_cost = null
+    if (typeof c5 === 'number') {
+      total_cost = c5
+    } else if (c5 && typeof c5 === 'string') {
+      // Handle Greek number format: "1.234,56" → 1234.56
+      const cleaned = c5.replace(/\./g, '').replace(',', '.')
+      const n = parseFloat(cleaned)
+      if (!isNaN(n)) total_cost = n
     }
 
     results.push({
@@ -207,11 +219,11 @@ function getPricePerM(route, dateStr) {
 const EMPTY = {
   route: '', truck: '', meters: 16.5,
   price_per_m: '', total_cost: '',
-  company: 'Hellenic Ferry Services', booking_ref: '', notes: ''
+  company: 'Hellenic Sea Ferries', booking_ref: '', notes: ''
 }
 
 const COMPANY_COLORS = {
-  'Hellenic Ferry Services': 'bg-blue-900/50 border-blue-700 text-blue-300',
+  'Hellenic Sea Ferries': 'bg-blue-900/50 border-blue-700 text-blue-300',
   'Blue Star':               'bg-cyan-900/50 border-cyan-700 text-cyan-300',
 }
 
@@ -282,7 +294,7 @@ export default function Ferries() {
       meters:      b.meters ?? 16.5,
       price_per_m: b.price_per_m ?? '',
       total_cost:  b.total_cost ?? '',
-      company:     b.company || 'Hellenic Ferry Services',
+      company:     b.company || 'Hellenic Sea Ferries',
       booking_ref: b.booking_ref || '',
       notes:       b.notes || '',
     })
@@ -388,7 +400,7 @@ export default function Ferries() {
     // Σύνολα ανά εταιρεία
     const summaryRows = [
       {},
-      { 'Δρομολόγιο': 'ΣΥΝΟΛΑ', 'Εταιρεία': 'Hellenic Ferry Services', 'Σύνολο (€)': companyTotals['Hellenic Ferry Services'] },
+      { 'Δρομολόγιο': 'ΣΥΝΟΛΑ', 'Εταιρεία': 'Hellenic Sea Ferries', 'Σύνολο (€)': companyTotals['Hellenic Sea Ferries'] },
       { 'Δρομολόγιο': '',        'Εταιρεία': 'Blue Star',               'Σύνολο (€)': companyTotals['Blue Star'] },
       { 'Δρομολόγιο': '',        'Εταιρεία': 'ΓΕΝΙΚΟ ΣΥΝΟΛΟ',           'Σύνολο (€)': monthTotal },
     ]
@@ -438,8 +450,8 @@ export default function Ferries() {
       <div className="grid grid-cols-3 gap-3">
         <div className="bg-blue-900/30 border border-blue-700/50 rounded-2xl px-4 py-3">
           <p className="text-blue-300 text-xs font-medium uppercase tracking-wide mb-1">Hellenic</p>
-          <p className="text-white text-xl font-bold">{companyTotals['Hellenic Ferry Services'].toLocaleString('el-GR', { minimumFractionDigits: 2 })} €</p>
-          <p className="text-blue-400 text-xs mt-0.5">{monthBookings.filter(b => b.company === 'Hellenic Ferry Services').length} κρατήσεις</p>
+          <p className="text-white text-xl font-bold">{companyTotals['Hellenic Sea Ferries'].toLocaleString('el-GR', { minimumFractionDigits: 2 })} €</p>
+          <p className="text-blue-400 text-xs mt-0.5">{monthBookings.filter(b => b.company === 'Hellenic Sea Ferries').length} κρατήσεις</p>
         </div>
         <div className="bg-cyan-900/30 border border-cyan-700/50 rounded-2xl px-4 py-3">
           <p className="text-cyan-300 text-xs font-medium uppercase tracking-wide mb-1">Blue Star</p>
