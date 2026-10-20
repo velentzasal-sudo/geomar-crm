@@ -509,55 +509,59 @@ export default function Orders() {
       )}
 
       {/* Filters */}
-      <div className="flex flex-wrap gap-2 items-center">
+      <div className="space-y-2">
+        {/* Search — full width */}
         <input
           value={search}
           onChange={e => setSearch(e.target.value)}
           placeholder="🔍 Αναζήτηση..."
-          className="bg-slate-800 border border-slate-700 rounded-xl px-4 py-2 text-white text-sm w-full sm:w-56 focus:outline-none focus:border-blue-500"
+          className="bg-slate-800 border border-slate-700 rounded-xl px-4 py-2 text-white text-sm w-full focus:outline-none focus:border-blue-500"
         />
-        <select
-          value={filterStatus}
-          onChange={e => setFilterStatus(e.target.value)}
-          className="bg-slate-800 border border-slate-700 rounded-xl px-4 py-2 text-white text-sm focus:outline-none focus:border-blue-500"
-        >
-          <option value="all">Όλες</option>
-          {STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
-        </select>
-        <select
-          value={filterTemp}
-          onChange={e => setFilterTemp(e.target.value)}
-          className="bg-slate-800 border border-slate-700 rounded-xl px-4 py-2 text-white text-sm focus:outline-none focus:border-blue-500"
-        >
-          <option value="all">Όλες θερμοκρασίες</option>
-          {TEMP_OPTIONS.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
-        </select>
-        <select
-          value={filterMonth}
-          onChange={e => setFilterMonth(e.target.value)}
-          className="bg-slate-800 border border-slate-700 rounded-xl px-4 py-2 text-white text-sm focus:outline-none focus:border-blue-500"
-        >
-          <option value="">Όλοι οι μήνες</option>
-          {availableMonths.map(m => {
-            const [y, mo] = m.split('-')
-            const label = format(new Date(parseInt(y), parseInt(mo)-1, 1), 'MMMM yyyy', { locale: el })
-            return <option key={m} value={m}>{label}</option>
-          })}
-        </select>
-        <select
-          value={sortBy}
-          onChange={e => setSortBy(e.target.value)}
-          className="bg-slate-800 border border-slate-700 rounded-xl px-4 py-2 text-white text-sm focus:outline-none focus:border-blue-500"
-        >
-          <option value="created">↕ Νεότερες πρώτα</option>
-          <option value="load_date">↕ Ημ. φόρτωσης</option>
-          <option value="delivery_date">↕ Ημ. παράδοσης</option>
-        </select>
-        <label className="flex items-center gap-2 text-slate-400 text-sm cursor-pointer">
-          <input type="checkbox" checked={showDelivered} onChange={e => setShowDelivered(e.target.checked)} className="rounded" />
-          Παραδομένες
-        </label>
-        <div className="ml-auto text-slate-400 text-sm">{filtered.length} παραγγελίες</div>
+        {/* Dropdowns — horizontal scroll on mobile */}
+        <div className="flex gap-2 items-center overflow-x-auto pb-1 scrollbar-none">
+          <select
+            value={filterStatus}
+            onChange={e => setFilterStatus(e.target.value)}
+            className="bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500 shrink-0"
+          >
+            <option value="all">Όλες</option>
+            {STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+          </select>
+          <select
+            value={filterTemp}
+            onChange={e => setFilterTemp(e.target.value)}
+            className="bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500 shrink-0"
+          >
+            <option value="all">🌡 Θερμοκρ.</option>
+            {TEMP_OPTIONS.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+          </select>
+          <select
+            value={filterMonth}
+            onChange={e => setFilterMonth(e.target.value)}
+            className="bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500 shrink-0"
+          >
+            <option value="">📅 Μήνας</option>
+            {availableMonths.map(m => {
+              const [y, mo] = m.split('-')
+              const label = format(new Date(parseInt(y), parseInt(mo)-1, 1), 'MMMM yyyy', { locale: el })
+              return <option key={m} value={m}>{label}</option>
+            })}
+          </select>
+          <select
+            value={sortBy}
+            onChange={e => setSortBy(e.target.value)}
+            className="bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500 shrink-0"
+          >
+            <option value="created">↕ Νεότερες</option>
+            <option value="load_date">↕ Φόρτωση</option>
+            <option value="delivery_date">↕ Παράδοση</option>
+          </select>
+          <label className="flex items-center gap-2 text-slate-400 text-sm cursor-pointer shrink-0">
+            <input type="checkbox" checked={showDelivered} onChange={e => setShowDelivered(e.target.checked)} className="rounded" />
+            Παραδ.
+          </label>
+          <div className="ml-auto text-slate-400 text-sm shrink-0">{filtered.length}</div>
+        </div>
       </div>
 
 
@@ -570,37 +574,43 @@ export default function Orders() {
           {filtered.map(o => {
             const ldm = parseFloat(o.ldm) || 0
             return (
-              <div key={o.id} className="bg-slate-800 border border-slate-700 rounded-2xl px-4 py-3 flex items-center gap-3">
-                <button
-                  onClick={() => cycleStatus(o)}
-                  className={`text-xs px-2 py-1 rounded-lg border shrink-0 transition-opacity hover:opacity-70 ${STATUS_COLORS[o.status] || 'bg-slate-700 text-slate-300 border-slate-600'}`}
-                  title="Κλικ για αλλαγή status"
-                >
-                  {o.status}
-                </button>
-                <div className="flex-1 min-w-0">
-                  <p className="text-white font-medium text-sm truncate">{o.client}</p>
-                  <p className="text-slate-400 text-xs">{o.firm} · {o.from} → {o.to}</p>
-                </div>
-                <div className="text-right shrink-0 space-y-0.5">
-                  <p className="text-slate-300 text-sm">{o.qty} {o.pal} · <span className={ldm > TLDM ? 'text-red-400' : 'text-slate-300'}>{ldm.toFixed(2)} LDM</span></p>
-                  <div className="flex items-center gap-1.5 justify-end text-xs">
-                    {(o.load_date || o.rdy) && (
-                      <span className="text-blue-300">📦 {(o.load_date || o.rdy).substring(0,10)}</span>
-                    )}
-                    {o.delivery_date && (
-                      <>
-                        <span className="text-slate-600">→</span>
-                        <span className="text-green-300">🏁 {o.delivery_date.substring(0,10)}</span>
-                      </>
-                    )}
+              <div key={o.id} className="bg-slate-800 border border-slate-700 rounded-2xl px-3 py-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
+                {/* Row 1 on mobile: status + client + actions */}
+                <div className="flex items-center gap-2 min-w-0">
+                  <button
+                    onClick={() => cycleStatus(o)}
+                    className={`text-xs px-2 py-1 rounded-lg border shrink-0 transition-opacity hover:opacity-70 ${STATUS_COLORS[o.status] || 'bg-slate-700 text-slate-300 border-slate-600'}`}
+                    title="Κλικ για αλλαγή status"
+                  >
+                    {o.status}
+                  </button>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-white font-medium text-sm truncate">{o.client}</p>
+                    <p className="text-slate-400 text-xs truncate">{o.firm}{o.firm && (o.from || o.to) ? ' · ' : ''}{o.from && o.to ? `${o.from} → ${o.to}` : (o.from || o.to || '')}</p>
                   </div>
-                  {o.truck && <p className="text-slate-400 text-xs">🚚 {o.truck}</p>}
+                  {/* Actions — always visible on mobile (right side) */}
+                  <div className="flex gap-1 shrink-0 sm:hidden">
+                    {o.truck && (
+                      <button onClick={() => openWhatsApp(o)} className="p-1.5 rounded-lg hover:bg-slate-700 text-slate-400 hover:text-green-400 text-sm" title="WhatsApp">📲</button>
+                    )}
+                    <button onClick={() => openEdit(o)} className="p-1.5 rounded-lg hover:bg-slate-700 text-slate-400 hover:text-white text-sm">✏️</button>
+                    <button onClick={() => handleDelete(o.id)} className="p-1.5 rounded-lg hover:bg-red-900/40 text-slate-400 hover:text-red-400 text-sm">🗑️</button>
+                  </div>
                 </div>
-                {o.price > 0 && (
-                  <div className="text-green-400 text-sm font-medium shrink-0">€{o.price}</div>
-                )}
-                <div className="flex gap-1 shrink-0">
+                {/* Row 2 on mobile: LDM + dates + truck + price */}
+                <div className="flex items-center gap-2 flex-wrap text-xs sm:ml-auto sm:shrink-0">
+                  <span className="text-slate-300">{o.qty} {o.pal} · <span className={ldm > TLDM ? 'text-red-400' : 'text-slate-300'}>{ldm.toFixed(2)} LDM</span></span>
+                  {(o.load_date || o.rdy) && (
+                    <span className="text-blue-300">📦 {(o.load_date || o.rdy).substring(0,10)}</span>
+                  )}
+                  {o.delivery_date && (
+                    <span className="text-green-300">🏁 {o.delivery_date.substring(0,10)}</span>
+                  )}
+                  {o.truck && <span className="text-slate-400">🚚 {o.truck}</span>}
+                  {o.price > 0 && <span className="text-green-400 font-medium">€{o.price}</span>}
+                </div>
+                {/* Actions — desktop only (hidden on mobile, shown above) */}
+                <div className="hidden sm:flex gap-1 shrink-0">
                   {o.truck && (
                     <button onClick={() => openWhatsApp(o)} className="p-1.5 rounded-lg hover:bg-slate-700 text-slate-400 hover:text-green-400 text-sm" title="WhatsApp">📲</button>
                   )}

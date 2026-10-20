@@ -393,8 +393,8 @@ export default function Calendar() {
           </div>
         </div>
 
-        {/* Right sidebar — selected day details */}
-        <div className={`flex-shrink-0 transition-all duration-200 ${selected ? 'w-80' : 'w-0 overflow-hidden'}`}>
+        {/* Right sidebar — selected day details (desktop: right panel, mobile: bottom sheet) */}
+        <div className={`hidden md:flex flex-shrink-0 transition-all duration-200 ${selected ? 'w-80' : 'w-0 overflow-hidden'}`}>
           {selected && (
             <div className="w-80 bg-slate-800 border border-slate-700 rounded-3xl p-4 space-y-4 h-full overflow-y-auto">
               <div className="flex items-center justify-between">
@@ -513,6 +513,116 @@ export default function Calendar() {
         </div>
 
       </div>
+
+      {/* Mobile bottom sheet — selected day details */}
+      {selected && (
+        <div className="md:hidden fixed inset-0 z-40 flex flex-col justify-end">
+          {/* Backdrop */}
+          <div className="absolute inset-0 bg-black/50" onClick={() => setSelected(null)} />
+          {/* Sheet */}
+          <div className="relative bg-slate-800 border-t border-slate-700 rounded-t-3xl max-h-[70vh] flex flex-col z-10">
+            {/* Handle bar */}
+            <div className="flex items-center justify-center pt-3 pb-1">
+              <div className="w-10 h-1 bg-slate-600 rounded-full" />
+            </div>
+            {/* Header */}
+            <div className="flex items-center justify-between px-4 pb-3 border-b border-slate-700">
+              <div>
+                <h2 className="text-white font-bold text-sm">
+                  {format(selected, 'd MMMM yyyy', { locale: el })}
+                </h2>
+                <p className="text-slate-400 text-xs">
+                  {selectedOrders.length + selectedPayments.length + selectedAvail.length} εγγραφές
+                </p>
+              </div>
+              <div className="flex items-center gap-1">
+                {showAvail && (
+                  <button
+                    onClick={() => openAddModal(selected)}
+                    className="text-xs bg-green-700 hover:bg-green-600 text-white px-2 py-1.5 rounded-xl transition-colors"
+                  >
+                    + Διαθ.
+                  </button>
+                )}
+                <button
+                  onClick={() => setSelected(null)}
+                  className="text-slate-500 hover:text-white text-lg leading-none px-1"
+                >×</button>
+              </div>
+            </div>
+            {/* Content — scrollable */}
+            <div className="overflow-y-auto p-4 space-y-4">
+              {/* Available trucks */}
+              {showAvail && selectedAvail.length > 0 && (
+                <div>
+                  <p className="text-slate-400 text-xs font-medium uppercase tracking-wide mb-2">🚛 Φορτηγά</p>
+                  <div className="space-y-2">
+                    {selectedAvail.map(a => {
+                      const ds = format(selected, 'yyyy-MM-dd')
+                      const { chip, label } = truckDayStatus(a.tr, ds)
+                      return (
+                        <div key={a.id} className={`border rounded-xl px-3 py-2 ${chip}`}>
+                          <div className="flex items-center justify-between gap-1">
+                            <span className="font-bold text-sm">{a.tr}</span>
+                            <div className="flex items-center gap-1">
+                              <button onClick={() => openAddModal(selected, a)} className="px-2 py-0.5 rounded-lg bg-black/20 text-xs">✏️</button>
+                              <button onClick={() => deleteAvail(a.id)} className="px-2 py-0.5 rounded-lg bg-black/20 text-xs">🗑️</button>
+                              <button onClick={() => navigate(`/fleet?truck=${encodeURIComponent(a.tr)}`)} className="px-2 py-0.5 rounded-lg bg-black/20 text-xs">🚚 →</button>
+                            </div>
+                          </div>
+                          <div className="text-xs opacity-70 mt-0.5 flex gap-2 flex-wrap">
+                            <span>{a.nt}</span>
+                            {a.ct && <span>📍 {a.ct}</span>}
+                            {a.co && <span>💬 {a.co}</span>}
+                            {label && <span className="font-medium">{label}</span>}
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+              {/* Orders */}
+              {showOrders && selectedOrders.length > 0 && (
+                <div>
+                  <p className="text-slate-400 text-xs font-medium uppercase tracking-wide mb-2">📦 Παραγγελίες</p>
+                  <div className="space-y-2">
+                    {selectedOrders.map(o => (
+                      <button key={o.id} onClick={() => openOrderEdit(o)}
+                        className="w-full text-left bg-slate-700 hover:bg-slate-600 rounded-xl px-3 py-2 transition-colors group">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className={`text-xs px-2 py-0.5 rounded-lg text-white shrink-0 ${STATUS_COLORS[o.status] || 'bg-slate-600'}`}>{o.status}</span>
+                          {o.truck && <span className="text-slate-500 text-xs">🚛 {o.truck}</span>}
+                        </div>
+                        <p className="text-white text-sm font-medium truncate">{o.client}</p>
+                        <p className="text-slate-400 text-xs">{o.from} → {o.to}</p>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {/* Payments */}
+              {showPayments && selectedPayments.length > 0 && (
+                <div>
+                  <p className="text-slate-400 text-xs font-medium uppercase tracking-wide mb-2">💰 Πληρωμές</p>
+                  <div className="space-y-2">
+                    {selectedPayments.map(p => (
+                      <div key={p.id} className="bg-purple-900/30 border border-purple-800/50 rounded-xl px-3 py-2">
+                        <p className="text-white text-sm font-medium">{p.client_name}</p>
+                        {p.notes && <p className="text-slate-400 text-xs mt-0.5">{p.notes}</p>}
+                        <p className="text-purple-300 font-bold text-sm mt-1">€{(parseFloat(p.amount)||0).toLocaleString('el-GR',{minimumFractionDigits:2})}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {selectedOrders.length === 0 && selectedPayments.length === 0 && selectedAvail.length === 0 && (
+                <p className="text-slate-500 text-sm">Δεν υπάρχουν εγγραφές</p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── ORDER EDIT MODAL ── */}
       {orderModal && (
