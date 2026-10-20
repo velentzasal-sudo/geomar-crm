@@ -9,6 +9,28 @@ import { el } from 'date-fns/locale'
 
 const COMPANIES = ['Hellenic Sea Ferries', 'Blue Star']
 
+// Short 2-3 letter codes για calendar display
+const PORT_SHORT = {
+  'Ηγουμενίτσα': 'ΗΓ',
+  'Πάτρα':       'ΠΑ',
+  'Μπάρι':       'ΜΠΑ',
+  'Ανκόνα':      'ΑΝΚ',
+  'Βενετία':     'ΒΕΝ',
+  'Ancona':      'ΑΝΚ',
+  'Bari':        'ΜΠΑ',
+  'Venice':      'ΒΕΝ',
+  'Venezia':     'ΒΕΝ',
+}
+
+// "Ηγουμενίτσα → Μπάρι" → "ΗΓ-ΜΠΑ"
+function shortRoute(route) {
+  if (!route) return '–'
+  const [from, to] = route.split('→').map(s => s.trim())
+  const f = PORT_SHORT[from] || from?.substring(0, 2).toUpperCase() || '?'
+  const t = PORT_SHORT[to]   || to?.substring(0, 2).toUpperCase()   || '?'
+  return `${f}-${t}`
+}
+
 // Map κωδικών λιμανιών → ελληνικά
 const PORT_MAP = {
   'IG': 'Ηγουμενίτσα', 'HG': 'Ηγουμενίτσα', 'HJG': 'Ηγουμενίτσα', 'IGO': 'Ηγουμενίτσα',
@@ -498,14 +520,15 @@ export default function Ferries() {
                     ${today ? 'bg-blue-600 text-white' : 'text-slate-400'}
                   `}>{format(day, 'd')}</div>
 
-                  {dayBookings.slice(0, 2).map(b => (
+                  {dayBookings.slice(0, 3).map(b => (
                     <div key={b.id}
-                      className={`text-xs px-1 py-0.5 rounded border truncate mb-0.5 ${COMPANY_COLORS[b.company] || 'bg-slate-700 border-slate-600 text-slate-300'}`}>
-                      ⛴️ {b.route?.split('→')[1]?.trim() || b.route}
+                      className={`text-xs px-1 py-0.5 rounded border mb-0.5 flex items-center gap-1 min-w-0 ${COMPANY_COLORS[b.company] || 'bg-slate-700 border-slate-600 text-slate-300'}`}>
+                      <span className="font-bold shrink-0">{b.truck || '–'}</span>
+                      <span className="opacity-70 shrink-0">{shortRoute(b.route)}</span>
                     </div>
                   ))}
-                  {dayBookings.length > 2 && (
-                    <div className="text-xs text-slate-500">+{dayBookings.length - 2}</div>
+                  {dayBookings.length > 3 && (
+                    <div className="text-xs text-slate-500 pl-1">+{dayBookings.length - 3}</div>
                   )}
                 </div>
               )
