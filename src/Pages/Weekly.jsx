@@ -11,7 +11,6 @@ const LDM_FACTORS = { E: 0.40, B: 0.50, P: 0.60, M: 1.00 }
 const AVAIL_STATUSES = [
   { key: 'Διαθέσιμο',  label: 'Διαθέσιμο',  color: 'bg-green-900/60 text-green-300 border-green-700' },
   { key: 'Εν κινήσει', label: 'Εν κινήσει', color: 'bg-cyan-900/60 text-cyan-300 border-cyan-700' },
-  { key: 'Ρεπό',       label: 'Ρεπό',        color: 'bg-slate-700 text-slate-400 border-slate-600' },
   { key: 'Service',    label: 'Service',     color: 'bg-red-900/60 text-red-300 border-red-700' },
 ]
 
@@ -101,6 +100,16 @@ export default function Weekly() {
   }
 
   const visibleTrucks = showAll ? trucks : trucks.filter(t => isActiveTruck(t.tr))
+
+  function detectCountry(loc = '') {
+    const l = loc.toLowerCase()
+    if (l.includes('ιταλ') || l.includes('ital') || l.includes('μπαρ') || l.includes('bari') ||
+        l.includes('βενετ') || l.includes('venet') || l.includes('μιλαν') || l.includes('milan') ||
+        l.includes('ανκον') || l.includes('ancona') || l.includes('τριεστ') || l.includes('tries')) return 'IT'
+    if (l.includes('ελλ') || l.includes('αθην') || l.includes('θεσσαλ') || l.includes('πατρ') ||
+        l.includes('athen') || l.includes('thess') || l.includes('patras') || l.includes('greece')) return 'GR'
+    return 'OTHER'
+  }
 
   // LDM bar color
   function ldmColor(used, cap) {
@@ -300,6 +309,76 @@ export default function Weekly() {
       )}
 
       <p className="text-slate-600 text-xs">Κλικ σε κελί με παραγγελίες → λεπτομέρειες · Κλικ σε κενό κελί → ορισμός κατάστασης</p>
+
+      {/* ── ΕΒΔΟΜΑΔΙΑΙΑ ΤΟΠΟΘΕΣΙΑ ── */}
+      <div className="bg-slate-800 border border-slate-700 rounded-2xl p-4">
+        <p className="text-white font-bold text-sm mb-3">📍 Τοποθεσίες ανά ημέρα</p>
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[640px] border-collapse text-xs">
+            <thead>
+              <tr>
+                <th className="text-left text-slate-400 font-medium py-2 pr-3 w-28">Χώρα</th>
+                {weekDays.map((d, i) => (
+                  <th key={i} className={`text-center font-medium py-2 px-2 min-w-[100px] ${isToday(d) ? 'text-blue-400' : 'text-slate-400'}`}>
+                    <div>{DAYS[i]}</div>
+                    <div className={`text-xs ${isToday(d) ? 'text-blue-500' : 'text-slate-500'}`}>{format(d, 'd/M')}</div>
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {['IT','GR','OTHER'].map(country => {
+                const label = country === 'IT' ? '🇮🇹 Ιταλία' : country === 'GR' ? '🇬🇷 Ελλάδα' : '🔀 Άλλο'
+                return (
+                  <tr key={country} className="border-t border-slate-700/50">
+                    <td className="py-2 pr-3 text-slate-400 font-medium">{label}</td>
+                    {weekDays.map((d, i) => {
+                      const ds = format(d, 'yyyy-MM-dd')
+                      // Avail records for this day
+                      const dayAvail = avail.filter(a => a.fr === ds)
+                      // Orders active this day (have truck + status)
+                      const dayOrders = orders.filter(o => {
+                        if (!o.truck) return false
+                        const load = o.load_date?.substring(0,10) || o.rdy?.substring(0,10)
+                        const del  = o.delivery_date?.substring(0,10)
+                        if (load && del) return ds >= load && ds <= del
+                        if (load) return ds >= load
+                        return false
+                      })
+                      // Merge: avail overrides orders
+                      const availTrSet = new Set(dayAvail.map(a => a.tr))
+                      const allTrucks = [
+                        ...dayAvail.map(a => ({ tr: a.tr, loc: a.ct || '', status: a.nt })),
+                        ...dayOrders.filter(o => !availTrSet.has(o.truck)).map(o => ({ tr: o.truck, loc: (o.from || '') + ' → ' + (o.to || ''), status: o.status })),
+                      ]
+                      const filtered = allTrucks.filter(t => detectCountry(t.loc) === country)
+                      return (
+                        <td key={i} className={`py-1.5 px-2 align-top ${isToday(d) ? 'bg-blue-950/20' : ''}`}>
+                          {filtered.length === 0 ? (
+                            <span className="text-slate-700">—</span>
+                          ) : (
+                            <div className="space-y-1">
+                              {filtered.map((t, j) => {
+                                const truckObj = trucks.find(tk => tk.tr === t.tr)
+                                return (
+                                  <div key={j} className="bg-slate-700/60 rounded-lg px-1.5 py-1">
+                                    <p className="text-white font-semibold truncate">{truckObj?.alias || t.tr}</p>
+                                    {t.loc && <p className="text-slate-400 truncate text-xs">{t.loc}</p>}
+                                  </div>
+                                )
+                              })}
+                            </div>
+                          )}
+                        </td>
+                      )
+                    })}
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
 
       {/* ── DETAIL POPUP ── */}
       {detail && (
