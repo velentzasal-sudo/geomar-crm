@@ -18,6 +18,7 @@ export default function Clients() {
   const [saving, setSaving] = useState(false)
   const [showDebt, setShowDebt] = useState(false)
   const [sortBy, setSortBy] = useState('debt_desc') // 'debt_desc','debt_asc','name_asc','name_desc'
+  const [showPendingDrawer, setShowPendingDrawer] = useState(false)
 
   // Import state
   const [importPreview, setImportPreview] = useState(null) // {matched, unmatched}
@@ -260,10 +261,11 @@ export default function Clients() {
           <p className="text-2xl font-bold text-red-400">€{totalDebt.toLocaleString('el-GR', { minimumFractionDigits: 2 })}</p>
           <p className="text-slate-400 text-sm mt-1">Συνολικό Υπόλοιπο</p>
         </div>
-        <div className="bg-slate-800 border border-slate-700 rounded-2xl p-4 text-center">
+        <button onClick={() => setShowPendingDrawer(true)}
+          className="bg-slate-800 border border-slate-700 rounded-2xl p-4 text-center hover:bg-slate-700/80 hover:border-orange-600/50 transition-colors w-full">
           <p className="text-3xl font-bold text-orange-400">{payments.filter(p => !p.paid).length}</p>
           <p className="text-slate-400 text-sm mt-1">Εκκρεμείς Πληρωμές</p>
-        </div>
+        </button>
       </div>
 
       {/* Filters */}
@@ -532,6 +534,97 @@ export default function Clients() {
           </div>
         </div>
       )}
+
+      {/* ── PENDING PAYMENTS DRAWER ── */}
+      {showPendingDrawer && (() => {
+        const allPending = payments.filter(p => !p.paid).sort((a, b) => {
+          if (!a.due_date && !b.due_date) return 0
+          if (!a.due_date) return 1
+          if (!b.due_date) return -1
+          return a.due_date.localeCompare(b.due_date)
+        })
+        // Group by client
+        const byClient = {}
+        allPending.forEach(p => {
+          const key = p.client_name || '—'
+          if (!byClient[key]) byClient[key] = []
+          byClient[key].push(p)
+        })
+        const overdueCount = allPending.filter(p => p.due_date && isPast(parseISO(p.due_date)) && !isToday(parseISO(p.due_date))).length
+        const totalPending = allPending.reduce((s, p) => s + (parseFloat(p.amount) || 0), 0)
+        return (
+          <div className="fixed inset-0 bg-black/60 z-50 flex justify-end" onClick={() => setShowPendingDrawer(false)}>
+            <div className="w-full max-w-md h-full bg-slate-900 border-l border-slate-700 flex flex-col" onClick={e => e.stopPropagation()}>
+              {/* Header */}
+              <div className="p-5 border-b border-slate-800 shrink-0">
+                <div className="flex items-center justify-between mb-3">
+                  <h2 className="text-xl font-bold text-white">💰 Εκκρεμείς Πληρωμές</h2>
+                  <button onClick={() => setShowPendingDrawer(false)} className="text-slate-400 hover:text-white p-2 rounded-xl hover:bg-slate-800">✕</button>
+                </div>
+                <div className="flex gap-4">
+                  <div>
+                    <p className="text-2xl font-bold text-orange-400">{allPending.length}</p>
+                    <p className="text-xs text-slate-500">Εκκρεμείς</p>
+                  </div>
+                  {overdueCount > 0 && (
+                    <div>
+                      <p className="text-2xl font-bold text-red-400">{overdueCount}</p>
+                      <p className="text-xs text-slate-500">Ληξιπρόθεσμες</p>
+                    </div>
+                  )}
+                  <div className="ml-auto text-right">
+                    <p className="text-xl font-bold text-white">€{totalPending.toLocaleString('el-GR', { minimumFractionDigits: 2 })}</p>
+                    <p className="text-xs text-slate-500">Σύνολο</p>
+                  </div>
+                </div>
+              </div>
+              {/* List */}
+              <div className="flex-1 overflow-y-auto p-3 space-y-3">
+                {allPending.length === 0 ? (
+                  <p className="text-slate-500 text-sm text-center pt-12">Δεν υπάρχουν εκκρεμείς πληρωμές 🎉</p>
+                ) : (
+                  Object.entries(byClient).map(([clientName, cPays]) => (
+                    <div key={clientName} className="bg-slate-800 border border-slate-700/60 rounded-2xl overflow-hidden">
+                      <button
+                        className="w-full flex items-center justify-between px-4 py-2.5 hover:bg-slate-700/40 transition-colors text-left"
+                        onClick={() => {
+                          const c = clients.find(x => x.name === clientName)
+                          if (c) { setShowPendingDrawer(false); setDetailClient(c) }
+                        }}
+                      >
+                        <span className="text-white font-medium text-sm">{clientName}</span>
+                        <span className="text-orange-400 font-bold text-sm">
+                          €{cPays.reduce((s,p) => s+(parseFloat(p.amount)||0), 0).toLocaleString('el-GR', { minimumFractionDigits: 2 })}
+                        </span>
+                      </button>
+                      <div className="px-3 pb-3 space-y-1.5 border-t border-slate-700/40">
+                        {cPays.map(p => {
+                          const overdue = p.due_date && isPast(parseISO(p.due_date)) && !isToday(parseISO(p.due_date))
+                          return (
+                            <div key={p.id} className="flex items-center gap-2 pt-1.5">
+                              <button onClick={() => togglePaid(p)} title="Σήμανση ως πληρωμένο"
+                                className="text-slate-500 hover:text-green-400 text-lg shrink-0 transition-colors">☐</button>
+                              <div className="flex-1 min-w-0">
+                                <p className="text-white text-sm font-medium">€{(parseFloat(p.amount)||0).toLocaleString('el-GR', { minimumFractionDigits: 2 })}</p>
+                                {p.due_date && (
+                                  <p className={`text-xs ${overdue ? 'text-red-400 font-medium' : 'text-slate-400'}`}>
+                                    {overdue ? '⚠️ ' : ''}Λήξη: {format(parseISO(p.due_date), 'd MMM yyyy', { locale: el })}
+                                  </p>
+                                )}
+                                {p.notes && <p className="text-slate-600 text-xs">{p.notes}</p>}
+                              </div>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+        )
+      })()}
 
       {/* ── EDIT / NEW MODAL ── */}
       {showModal && (
