@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { supabase } from './lib/supabase'
 import Layout from './components/Layout'
+import ErrorBoundary from './components/ErrorBoundary'
 import Login from './Pages/Login'
 import Dashboard from './Pages/Dashboard'
 import Orders from './Pages/Orders'
@@ -35,14 +36,14 @@ export default function App() {
    <BrowserRouter>
       <Routes>
         <Route element={<Layout user={session.user} />}>
-          <Route index element={<Dashboard />} />
-          <Route path="orders"   element={<Orders />} />
-          <Route path="fleet"    element={<Fleet />} />
-          <Route path="clients"  element={<Clients />} />
-          <Route path="firms"    element={<Firms />} />
-          <Route path="calendar" element={<Calendar />} />
-          <Route path="weekly"   element={<Weekly />} />
-          <Route path="ferries"  element={<Ferries />} />
+          <Route index element={<ErrorBoundary><Dashboard /></ErrorBoundary>} />
+          <Route path="orders"   element={<ErrorBoundary><Orders /></ErrorBoundary>} />
+          <Route path="fleet"    element={<ErrorBoundary><Fleet /></ErrorBoundary>} />
+          <Route path="clients"  element={<ErrorBoundary><Clients /></ErrorBoundary>} />
+          <Route path="firms"    element={<ErrorBoundary><Firms /></ErrorBoundary>} />
+          <Route path="calendar" element={<ErrorBoundary><Calendar /></ErrorBoundary>} />
+          <Route path="weekly"   element={<ErrorBoundary><Weekly /></ErrorBoundary>} />
+          <Route path="ferries"  element={<ErrorBoundary><Ferries /></ErrorBoundary>} />
 <Route path="*"             element={<Navigate to="/" replace />} />
         </Route>
       </Routes>
