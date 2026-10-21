@@ -333,21 +333,24 @@ export default function Dashboard() {
               ✏️ Ενημέρωση <span className="text-slate-500">{truckDropdown ? '▲' : '▼'}</span>
             </button>
             {truckDropdown && (
-              <div className="absolute right-0 top-full mt-1 bg-slate-700 border border-slate-600 rounded-xl shadow-xl z-10 min-w-36 overflow-hidden">
-                {trucks.map(t => (
-                  <button key={t.tr} onClick={() => { openEdit(t); setTruckDropdown(false) }}
-                    className="w-full text-left px-3 py-2 text-sm text-slate-200 hover:bg-slate-600 transition-colors flex items-center gap-2">
-                    🚛 {t.alias || t.tr}
-                  </button>
-                ))}
-              </div>
+              <>
+                <div className="fixed inset-0 z-10" onClick={() => setTruckDropdown(false)} />
+                <div className="absolute right-0 top-full mt-1 bg-slate-700 border border-slate-600 rounded-xl shadow-xl z-20 w-48 overflow-hidden max-h-64 overflow-y-auto">
+                  {trucks.map(t => (
+                    <button key={t.tr} onClick={() => { openEdit(t); setTruckDropdown(false) }}
+                      className="w-full text-left px-3 py-2.5 text-sm text-slate-200 hover:bg-slate-600 transition-colors flex items-center gap-2 border-b border-slate-600/50 last:border-0">
+                      🚛 {t.alias || t.tr}
+                    </button>
+                  ))}
+                </div>
+              </>
             )}
           </div>
         </div>
         {truckPins.length === 0 ? (
-          <div className="h-40 flex flex-col items-center justify-center text-slate-500 text-sm gap-2">
+          <div className="h-40 flex flex-col items-center justify-center text-slate-500 text-sm gap-2 text-center px-4">
             <span className="text-3xl">🗺️</span>
-            <p>Βάλε τοποθεσία στα φορτηγά για να εμφανιστούν στον χάρτη</p>
+            <p>Πάτα <span className="text-blue-400 font-medium">✏️ Ενημέρωση</span> και βάλε τοποθεσία σε ένα φορτηγό για να εμφανιστεί στον χάρτη</p>
           </div>
         ) : (
           <div className="rounded-xl overflow-hidden" style={{ height: 280 }}>
