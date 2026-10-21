@@ -17,10 +17,13 @@ L.Icon.Default.mergeOptions({
 
 // Custom truck marker
 function truckIcon(label) {
+  const escaped = label.replace(/</g,'&lt;').replace(/>/g,'&gt;')
   return L.divIcon({
-    className: '',
-    html: `<div style="background:#1e40af;color:#fff;border:2px solid #3b82f6;border-radius:8px;padding:2px 6px;font-size:11px;font-weight:700;white-space:nowrap;box-shadow:0 2px 6px rgba(0,0,0,0.5)">${label}</div>`,
-    iconAnchor: [20, 12],
+    className: 'leaflet-truck-icon',
+    html: `<div style="background:#1e40af;color:#fff;border:2px solid #3b82f6;border-radius:8px;padding:3px 8px;font-size:11px;font-weight:700;white-space:nowrap;box-shadow:0 2px 8px rgba(0,0,0,0.6);line-height:1.4">🚛 ${escaped}</div>`,
+    iconSize: null,
+    iconAnchor: [0, 0],
+    popupAnchor: [0, -10],
   })
 }
 
@@ -80,6 +83,8 @@ export default function Dashboard() {
   const [editForm,   setEditForm]   = useState({ status: 'Εν κινήσει', location: '', notes: '' })
   const [editSaving, setEditSaving] = useState(false)
   const [truckPins,  setTruckPins]  = useState([]) // [{ tr, alias, lat, lng, status, location, notes }]
+  const [truckDropdown, setTruckDropdown] = useState(false)
+  const [showAllOrders, setShowAllOrders] = useState(false)
 
   const AVAIL_STATUSES = [
     { key: 'Διαθέσιμο',  color: 'bg-green-900/60 text-green-300 border-green-700' },
@@ -262,46 +267,81 @@ export default function Dashboard() {
       )}
 
       {/* ── 2. ΑΝΟΙΧΤΕΣ ΠΑΡΑΓΓΕΛΙΕΣ ── */}
-      <div className="bg-slate-800 border border-slate-700 rounded-2xl p-4">
-        <div className="flex items-center justify-between mb-3">
-          <p className="text-white font-bold text-sm">📦 Ανοιχτές Παραγγελίες</p>
-          <span className="text-slate-400 text-xs">{openOrders.length}</span>
-        </div>
-        {loading ? (
-          <p className="text-slate-500 text-sm">Φόρτωση...</p>
-        ) : openOrders.length === 0 ? (
-          <p className="text-slate-500 text-sm">Δεν υπάρχουν</p>
-        ) : (
-          <div className="space-y-1.5 max-h-56 overflow-y-auto">
-            {openOrders.map(o => (
-              <button key={o.id} onClick={() => navigate(`/orders?open=${o.id}`)}
-                className="w-full bg-slate-700 hover:bg-slate-600 rounded-xl px-3 py-2 flex items-center gap-2 text-left transition-colors">
-                <StatusBadge status={o.status} />
-                <div className="flex-1 min-w-0">
-                  <p className="text-white text-xs font-medium truncate">{o.client}</p>
-                  <p className="text-slate-400 text-xs truncate">{o.from} → {o.to}</p>
+      {(() => {
+        const PREVIEW = 5
+        const shown = showAllOrders ? openOrders : openOrders.slice(0, PREVIEW)
+        // Ομαδοποίηση ανά status για σύνοψη
+        const byStatus = openOrders.reduce((acc, o) => {
+          acc[o.status] = (acc[o.status] || 0) + 1
+          return acc
+        }, {})
+        return (
+          <div className="bg-slate-800 border border-slate-700 rounded-2xl p-4">
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-white font-bold text-sm">📦 Ανοιχτές Παραγγελίες</p>
+              <div className="flex items-center gap-2">
+                {/* Status pills σύνοψη */}
+                <div className="hidden sm:flex gap-1">
+                  {Object.entries(byStatus).map(([st, cnt]) => (
+                    <span key={st} className="text-xs px-1.5 py-0.5 rounded-md bg-slate-700 text-slate-300">{cnt} {st}</span>
+                  ))}
                 </div>
-                <div className="text-right shrink-0">
-                  <p className="text-slate-400 text-xs">{o.qty} {o.pal === 'E' ? 'EPAL' : o.pal}</p>
-                  {o.truck && <p className="text-slate-500 text-xs">🚚 {o.truck}</p>}
+                <span className="text-slate-500 text-xs font-bold">{openOrders.length}</span>
+              </div>
+            </div>
+            {loading ? (
+              <p className="text-slate-500 text-sm">Φόρτωση...</p>
+            ) : openOrders.length === 0 ? (
+              <p className="text-slate-500 text-sm">Δεν υπάρχουν</p>
+            ) : (
+              <>
+                <div className="space-y-1">
+                  {shown.map(o => (
+                    <button key={o.id} onClick={() => navigate(`/orders?open=${o.id}`)}
+                      className="w-full bg-slate-700/70 hover:bg-slate-600 rounded-xl px-3 py-1.5 flex items-center gap-2 text-left transition-colors">
+                      <StatusBadge status={o.status} />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-white text-xs font-medium truncate">{o.client}</p>
+                        <p className="text-slate-400 text-xs truncate">{o.from} → {o.to}</p>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <p className="text-slate-400 text-xs">{o.qty} {o.pal === 'E' ? 'EPAL' : o.pal}</p>
+                        {o.truck && <p className="text-slate-500 text-xs">🚚 {o.truck}</p>}
+                      </div>
+                    </button>
+                  ))}
                 </div>
-              </button>
-            ))}
+                {openOrders.length > PREVIEW && (
+                  <button onClick={() => setShowAllOrders(v => !v)}
+                    className="mt-2 w-full text-center text-xs text-blue-400 hover:text-blue-300 py-1.5 transition-colors">
+                    {showAllOrders ? '▲ Λιγότερες' : `▼ +${openOrders.length - PREVIEW} ακόμα`}
+                  </button>
+                )}
+              </>
+            )}
           </div>
-        )}
-      </div>
+        )
+      })()}
 
       {/* ── 3. ΧΑΡΤΗΣ ΦΟΡΤΗΓΩΝ ── */}
       <div className="bg-slate-800 border border-slate-700 rounded-2xl p-4">
         <div className="flex items-center justify-between mb-3">
           <p className="text-white font-bold text-sm">🗺️ Τοποθεσία Φορτηγών</p>
-          <div className="flex gap-2">
-            {trucks.map(t => (
-              <button key={t.tr} onClick={() => openEdit(t)}
-                className="text-xs bg-slate-700 hover:bg-slate-600 border border-slate-600 text-slate-300 px-2 py-1 rounded-lg transition-colors">
-                ✏️ {t.alias || t.tr}
-              </button>
-            ))}
+          <div className="relative">
+            <button onClick={() => setTruckDropdown(v => !v)}
+              className="text-xs bg-slate-700 hover:bg-slate-600 border border-slate-600 text-slate-300 px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1">
+              ✏️ Ενημέρωση <span className="text-slate-500">{truckDropdown ? '▲' : '▼'}</span>
+            </button>
+            {truckDropdown && (
+              <div className="absolute right-0 top-full mt-1 bg-slate-700 border border-slate-600 rounded-xl shadow-xl z-10 min-w-36 overflow-hidden">
+                {trucks.map(t => (
+                  <button key={t.tr} onClick={() => { openEdit(t); setTruckDropdown(false) }}
+                    className="w-full text-left px-3 py-2 text-sm text-slate-200 hover:bg-slate-600 transition-colors flex items-center gap-2">
+                    🚛 {t.alias || t.tr}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         </div>
         {truckPins.length === 0 ? (
