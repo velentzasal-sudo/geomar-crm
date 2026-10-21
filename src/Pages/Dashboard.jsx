@@ -112,13 +112,14 @@ export default function Dashboard() {
   async function loadAll() {
     setLoading(true)
     const todayStr = format(new Date(), 'yyyy-MM-dd')
-    const [{ data: ord }, { data: cli }, { data: mem }, { data: pay }, { data: trk }, { data: av }] = await Promise.all([
+    const [{ data: ord }, { data: cli }, { data: mem }, { data: pay }, { data: trk }, { data: av }, { data: frm }] = await Promise.all([
       supabase.from('orders').select('*').not('status', 'eq', 'Delivered'),
-      supabase.from('clients').select('id,name,next_card_date,total_debt'),
+      supabase.from('clients').select('id,name,next_card_date,total_debt,city'),
       supabase.from('memos').select('*').limit(1).maybeSingle(),
       supabase.from('payments').select('*').eq('paid', false).order('due_date'),
       supabase.from('trucks').select('tr,alias'),
       supabase.from('avail').select('*').eq('fr', todayStr),
+      supabase.from('firms').select('id,name,city,country'),
     ])
     setOrders(ord || [])
     setClients(cli || [])
@@ -128,35 +129,44 @@ export default function Dashboard() {
     setAvail(avData)
     if (mem) { setMemo(mem.content || ''); setMemoId(mem.id) }
     setLoading(false)
-    // Geocode truck locations for map
-    buildPins(trk || [], avData, ord || [])
+    buildPins(trk || [], avData, ord || [], cli || [], frm || [])
   }
 
-  async function buildPins(trk, avData, ord) {
+  async function buildPins(trk, avData, ord, cli, frm) {
     const availMap = {}
     avData.forEach(a => { availMap[a.tr] = a })
+
+    // Lookups by name
+    const firmByName   = {}
+    frm.forEach(f => { firmByName[f.name?.toLowerCase()] = f })
+    const clientByName = {}
+    cli.forEach(c => { clientByName[c.name?.toLowerCase()] = c })
 
     const pins = []
     for (const t of trk) {
       const rec = availMap[t.tr]
-      // Τοποθεσία: 1) manual avail, 2) auto από παραγγελία
       let loc = rec?.ct || ''
       let autoNote = ''
+
       if (!loc) {
-        // "Ανατεθειμένη" → φορτώνει από το from
-        // "Μεταφορά" / "Παράδοση" → κινείται προς το to
         const activeOrder = ord.find(o => o.truck === t.tr &&
-          ['Μεταφορά','Ανατεθειμένη','Παράδοση'].includes(o.status))
+          ['Ανατεθειμένη','Μεταφορά','Παράδοση'].includes(o.status))
+
         if (activeOrder) {
-          if (activeOrder.status === 'Ανατεθειμένη') {
-            loc = activeOrder.from || ''
-            autoNote = `→ ${activeOrder.to || ''} (${activeOrder.client})`
+          if (activeOrder.status === 'Παράδοση') {
+            // Παράδοση → τοποθεσία πελάτη
+            const c = clientByName[activeOrder.client?.toLowerCase()]
+            loc = c?.city || activeOrder.to || ''
+            autoNote = `📦 Παράδοση → ${activeOrder.client}`
           } else {
-            loc = activeOrder.to || activeOrder.from || ''
-            autoNote = `${activeOrder.client} · ${activeOrder.status}`
+            // Ανατεθειμένη / Μεταφορά → τοποθεσία φίρμας
+            const f = firmByName[activeOrder.firm?.toLowerCase()]
+            loc = f?.city || activeOrder.from || ''
+            autoNote = `🏭 ${activeOrder.firm || activeOrder.from} → ${activeOrder.client}`
           }
         }
       }
+
       if (!loc) continue
       const coords = await geocode(loc)
       if (!coords) continue
