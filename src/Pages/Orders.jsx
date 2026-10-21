@@ -127,6 +127,101 @@ function validate(form) {
   return errors
 }
 
+// ── Grouped by client accordion ──────────────────────────────
+function GroupedOrders({ orders, onEdit, onDelete, onCycleStatus, onWhatsApp, STATUS_COLORS, TLDM }) {
+  const [openClients, setOpenClients] = useState({})
+
+  // Ομαδοποίηση ανά πελάτη, διατηρώντας σειρά (πρώτα ο πελάτης που εμφανίστηκε πιο πρόσφατα)
+  const groups = []
+  const seen = {}
+  for (const o of orders) {
+    const key = o.client || '—'
+    if (!seen[key]) { seen[key] = []; groups.push({ client: key, orders: seen[key] }) }
+    seen[key].push(o)
+  }
+
+  function toggle(client) {
+    setOpenClients(prev => ({ ...prev, [client]: !prev[client] }))
+  }
+
+  // Άνοιγμα αυτόματα αν υπάρχει μόνο ένας πελάτης
+  useEffect(() => {
+    if (groups.length === 1) setOpenClients({ [groups[0].client]: true })
+  }, [orders.length])
+
+  return (
+    <div className="space-y-2">
+      {groups.map(({ client, orders: gOrders }) => {
+        const isOpen = openClients[client] ?? false
+        const totalLdm = gOrders.reduce((s, o) => s + (parseFloat(o.ldm) || 0), 0)
+        const statuses = [...new Set(gOrders.map(o => o.status))]
+        return (
+          <div key={client} className="bg-slate-800 border border-slate-700 rounded-2xl overflow-hidden">
+            {/* Client header row */}
+            <button
+              onClick={() => toggle(client)}
+              className="w-full flex items-center gap-3 px-4 py-3 hover:bg-slate-700/50 transition-colors text-left"
+            >
+              <span className="text-white font-semibold text-sm flex-1 truncate">{client}</span>
+              <div className="flex items-center gap-2 shrink-0">
+                {statuses.map(s => (
+                  <span key={s} className={`text-xs px-1.5 py-0.5 rounded-md border ${STATUS_COLORS[s] || 'bg-slate-700 text-slate-300 border-slate-600'}`}>{s}</span>
+                ))}
+                <span className="text-slate-500 text-xs">{gOrders.length} παρ. · {totalLdm.toFixed(1)} LDM</span>
+                <span className="text-slate-500 text-sm">{isOpen ? '▲' : '▼'}</span>
+              </div>
+            </button>
+
+            {/* Orders list */}
+            {isOpen && (
+              <div className="border-t border-slate-700 divide-y divide-slate-700/60">
+                {gOrders.map(o => {
+                  const ldm = parseFloat(o.ldm) || 0
+                  return (
+                    <div key={o.id} className="px-3 py-2.5 flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-3 hover:bg-slate-700/30 transition-colors">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <button
+                          onClick={() => onCycleStatus(o)}
+                          className={`text-xs px-2 py-1 rounded-lg border shrink-0 transition-opacity hover:opacity-70 ${STATUS_COLORS[o.status] || 'bg-slate-700 text-slate-300 border-slate-600'}`}
+                          title="Κλικ για αλλαγή status"
+                        >{o.status}</button>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-slate-300 text-xs truncate">
+                            {o.firm && <span className="text-slate-400">{o.firm} · </span>}
+                            {o.from && o.to ? `${o.from} → ${o.to}` : (o.from || o.to || '—')}
+                            {o.is_recurring && <span className="ml-1 text-blue-400">🔁</span>}
+                          </p>
+                        </div>
+                        <div className="flex gap-1 shrink-0 sm:hidden">
+                          {o.truck && <button onClick={() => onWhatsApp(o)} className="p-1.5 rounded-lg hover:bg-slate-700 text-slate-400 hover:text-green-400 text-sm">📲</button>}
+                          <button onClick={() => onEdit(o)} className="p-1.5 rounded-lg hover:bg-slate-700 text-slate-400 hover:text-white text-sm">✏️</button>
+                          <button onClick={() => onDelete(o.id)} className="p-1.5 rounded-lg hover:bg-red-900/40 text-slate-400 hover:text-red-400 text-sm">🗑️</button>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 flex-wrap text-xs sm:ml-auto sm:shrink-0">
+                        <span className="text-slate-300">{o.qty} {o.pal} · <span className={ldm > TLDM ? 'text-red-400' : 'text-slate-400'}>{ldm.toFixed(2)} LDM</span></span>
+                        {(o.load_date || o.rdy) && <span className="text-blue-300">📦 {(o.load_date || o.rdy).substring(0,10)}</span>}
+                        {o.delivery_date && <span className="text-green-300">🏁 {o.delivery_date.substring(0,10)}</span>}
+                        {o.truck && <span className="text-slate-400">🚚 {o.truck}</span>}
+                        {o.price > 0 && <span className="text-green-400 font-medium">€{o.price}</span>}
+                      </div>
+                      <div className="hidden sm:flex gap-1 shrink-0">
+                        {o.truck && <button onClick={() => onWhatsApp(o)} className="p-1.5 rounded-lg hover:bg-slate-700 text-slate-400 hover:text-green-400 text-sm">📲</button>}
+                        <button onClick={() => onEdit(o)} className="p-1.5 rounded-lg hover:bg-slate-700 text-slate-400 hover:text-white text-sm">✏️</button>
+                        <button onClick={() => onDelete(o.id)} className="p-1.5 rounded-lg hover:bg-red-900/40 text-slate-400 hover:text-red-400 text-sm">🗑️</button>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 export default function Orders() {
   const [searchParams, setSearchParams] = useSearchParams()
   const [orders, setOrders] = useState([])
@@ -716,60 +811,15 @@ export default function Orders() {
       ) : filtered.length === 0 ? (
         <p className="text-slate-500">Δεν βρέθηκαν παραγγελίες</p>
       ) : (
-        <div className="space-y-2">
-          {filtered.map(o => {
-            const ldm = parseFloat(o.ldm) || 0
-            return (
-              <div key={o.id} className="bg-slate-800 border border-slate-700 rounded-2xl px-3 py-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
-                {/* Row 1 on mobile: status + client + actions */}
-                <div className="flex items-center gap-2 min-w-0">
-                  <button
-                    onClick={() => cycleStatus(o)}
-                    className={`text-xs px-2 py-1 rounded-lg border shrink-0 transition-opacity hover:opacity-70 ${STATUS_COLORS[o.status] || 'bg-slate-700 text-slate-300 border-slate-600'}`}
-                    title="Κλικ για αλλαγή status"
-                  >
-                    {o.status}
-                  </button>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-white font-medium text-sm truncate">
-                      {o.client}
-                      {o.is_recurring && <span className="ml-1.5 text-blue-400 text-xs">🔁</span>}
-                    </p>
-                    <p className="text-slate-400 text-xs truncate">{o.firm}{o.firm && (o.from || o.to) ? ' · ' : ''}{o.from && o.to ? `${o.from} → ${o.to}` : (o.from || o.to || '')}</p>
-                  </div>
-                  {/* Actions — always visible on mobile (right side) */}
-                  <div className="flex gap-1 shrink-0 sm:hidden">
-                    {o.truck && (
-                      <button onClick={() => openWhatsApp(o)} className="p-1.5 rounded-lg hover:bg-slate-700 text-slate-400 hover:text-green-400 text-sm" title="WhatsApp">📲</button>
-                    )}
-                    <button onClick={() => openEdit(o)} className="p-1.5 rounded-lg hover:bg-slate-700 text-slate-400 hover:text-white text-sm">✏️</button>
-                    <button onClick={() => handleDelete(o.id)} className="p-1.5 rounded-lg hover:bg-red-900/40 text-slate-400 hover:text-red-400 text-sm">🗑️</button>
-                  </div>
-                </div>
-                {/* Row 2 on mobile: LDM + dates + truck + price */}
-                <div className="flex items-center gap-2 flex-wrap text-xs sm:ml-auto sm:shrink-0">
-                  <span className="text-slate-300">{o.qty} {o.pal} · <span className={ldm > TLDM ? 'text-red-400' : 'text-slate-300'}>{ldm.toFixed(2)} LDM</span></span>
-                  {(o.load_date || o.rdy) && (
-                    <span className="text-blue-300">📦 {(o.load_date || o.rdy).substring(0,10)}</span>
-                  )}
-                  {o.delivery_date && (
-                    <span className="text-green-300">🏁 {o.delivery_date.substring(0,10)}</span>
-                  )}
-                  {o.truck && <span className="text-slate-400">🚚 {o.truck}</span>}
-                  {o.price > 0 && <span className="text-green-400 font-medium">€{o.price}</span>}
-                </div>
-                {/* Actions — desktop only (hidden on mobile, shown above) */}
-                <div className="hidden sm:flex gap-1 shrink-0">
-                  {o.truck && (
-                    <button onClick={() => openWhatsApp(o)} className="p-1.5 rounded-lg hover:bg-slate-700 text-slate-400 hover:text-green-400 text-sm" title="WhatsApp">📲</button>
-                  )}
-                  <button onClick={() => openEdit(o)} className="p-1.5 rounded-lg hover:bg-slate-700 text-slate-400 hover:text-white text-sm">✏️</button>
-                  <button onClick={() => handleDelete(o.id)} className="p-1.5 rounded-lg hover:bg-red-900/40 text-slate-400 hover:text-red-400 text-sm">🗑️</button>
-                </div>
-              </div>
-            )
-          })}
-        </div>
+        <GroupedOrders
+          orders={filtered}
+          onEdit={openEdit}
+          onDelete={handleDelete}
+          onCycleStatus={cycleStatus}
+          onWhatsApp={openWhatsApp}
+          STATUS_COLORS={STATUS_COLORS}
+          TLDM={TLDM}
+        />
       )}
 
       {showModal && (
