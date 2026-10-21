@@ -3,15 +3,7 @@ import { supabase } from '../lib/supabase'
 import { format } from 'date-fns'
 import { el } from 'date-fns/locale'
 
-const TLDM = 13.20
-const LDM_FACTORS = { E: 0.40, B: 0.50, P: 0.60, M: 1.00 }
-
-const STATUS_COLORS = {
-  'Open':          'bg-blue-900/50 text-blue-300',
-  'Ανατεθειμένη': 'bg-orange-900/50 text-orange-300',
-  'Μεταφορά':      'bg-green-900/50 text-green-300',
-  'Παράδοση':      'bg-purple-900/50 text-purple-300',
-}
+import { TLDM, LDM_FACTORS, STATUS_COLORS } from '../lib/constants'
 
 export default function Dispatch() {
   const [orders, setOrders] = useState([])

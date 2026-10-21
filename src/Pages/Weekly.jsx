@@ -4,9 +4,9 @@ import { supabase } from '../lib/supabase'
 import { format, startOfWeek, addDays, isToday, parseISO } from 'date-fns'
 import { el } from 'date-fns/locale'
 
+import { TLDM, LDM_FACTORS } from '../lib/constants'
+
 const DAYS = ['Δευ', 'Τρί', 'Τετ', 'Πέμ', 'Παρ', 'Σάβ', 'Κυρ']
-const TLDM = 13.20
-const LDM_FACTORS = { E: 0.40, B: 0.50, P: 0.60, M: 1.00 }
 
 const AVAIL_STATUSES = [
   { key: 'Διαθέσιμο',  label: 'Διαθέσιμο',  color: 'bg-green-900/60 text-green-300 border-green-700' },

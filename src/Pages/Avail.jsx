@@ -2,19 +2,9 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { format } from 'date-fns'
 import { el } from 'date-fns/locale'
-
-const TLDM = 13.20
-const LDM_FACTORS = { E: 0.40, B: 0.50, P: 0.60, M: 1.00 }
+import { TLDM, LDM_FACTORS, AVAIL_STATUS_COLORS as STATUS_COLORS } from '../lib/constants'
 
 const MANUAL_STATUSES = ['Ρεπό', 'Service']
-
-const STATUS_COLORS = {
-  'Διαθέσιμο':         'bg-green-900/50 text-green-300 border-green-700',
-  'Μερικώς Φορτωμένο': 'bg-blue-900/50 text-blue-300 border-blue-700',
-  'Πλήρως Φορτωμένο':  'bg-orange-900/50 text-orange-300 border-orange-700',
-  'Ρεπό':              'bg-slate-700 text-slate-400 border-slate-600',
-  'Service':           'bg-red-900/50 text-red-300 border-red-700',
-}
 
 const ALL_STATUSES = ['Διαθέσιμο', 'Μερικώς Φορτωμένο', 'Πλήρως Φορτωμένο', 'Ρεπό', 'Service']
 
@@ -25,7 +15,7 @@ export default function Avail() {
   const [loading, setLoading] = useState(true)
   const [editing, setEditing] = useState(null) // truck.tr
   const [selectedDate, setSelectedDate] = useState(format(new Date(), 'yyyy-MM-dd'))
-  const [form, setForm] = useState({ status: 'Διαθέσιμο', location: '', notes: '', avail_date: '' })
+  const [form, setForm] = useState({ status: 'Διαθέσιμο', location: '', notes: '' })
   const [saving, setSaving]   = useState(false)
 
   useEffect(() => { loadAll() }, [selectedDate])
@@ -78,10 +68,9 @@ export default function Avail() {
     const existing = getManualAvail(truck.tr)
     setEditing(truck.tr)
     setForm({
-      status:     existing?.nt || getStatus(truck.tr),
-      location:   existing?.ct || '',
-      notes:      existing?.co || '',
-      avail_date: existing?.fr || selectedDate,
+      status:   existing?.nt || getStatus(truck.tr),
+      location: existing?.ct || '',
+      notes:    existing?.co || '',
     })
   }
 
@@ -92,7 +81,7 @@ export default function Avail() {
     // Only save if manual status (Ρεπό/Service) — location/notes always save
     const payload = {
       tr: editing,
-      fr: form.avail_date || selectedDate,
+      fr: selectedDate,
       ct: form.location,
       co: form.notes,
       nt: MANUAL_STATUSES.includes(form.status) ? form.status : null,
@@ -242,17 +231,6 @@ export default function Avail() {
                   >{s}</button>
                 ))}
               </div>
-            </div>
-
-            {/* Available from date */}
-            <div>
-              <label className="block text-xs text-slate-400 mb-1">Διαθέσιμο από</label>
-              <input
-                type="date"
-                value={form.avail_date}
-                onChange={e => setForm(f => ({ ...f, avail_date: e.target.value }))}
-                className="w-full bg-slate-700 border border-slate-600 rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500"
-              />
             </div>
 
             <div>

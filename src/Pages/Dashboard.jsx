@@ -6,6 +6,7 @@ import { el } from 'date-fns/locale'
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
+import { STATUS_COLORS } from '../lib/constants'
 
 // Fix Leaflet default icon paths (Vite issue)
 delete L.Icon.Default.prototype._getIconUrl
@@ -142,8 +143,8 @@ export default function Dashboard() {
     const clientByName = {}
     cli.forEach(c => { clientByName[c.name?.toLowerCase()] = c })
 
-    const pins = []
-    for (const t of trk) {
+    // Ετοιμάζουμε δεδομένα για κάθε φορτηγό
+    const candidates = trk.map(t => {
       const rec = availMap[t.tr]
       let loc = rec?.ct || ''
       let autoNote = ''
@@ -154,12 +155,10 @@ export default function Dashboard() {
 
         if (activeOrder) {
           if (activeOrder.status === 'Παράδοση') {
-            // Παράδοση → τοποθεσία πελάτη
             const c = clientByName[activeOrder.client?.toLowerCase()]
             loc = c?.city || activeOrder.to || ''
             autoNote = `📦 Παράδοση → ${activeOrder.client}`
           } else {
-            // Ανατεθειμένη / Μεταφορά → τοποθεσία φίρμας
             const f = firmByName[activeOrder.firm?.toLowerCase()]
             loc = f?.city || activeOrder.from || ''
             autoNote = `🏭 ${activeOrder.firm || activeOrder.from} → ${activeOrder.client}`
@@ -167,9 +166,18 @@ export default function Dashboard() {
         }
       }
 
-      if (!loc) continue
-      const coords = await geocode(loc)
-      if (!coords) continue
+      return { t, rec, loc, autoNote }
+    }).filter(({ loc }) => !!loc)
+
+    // Παράλληλο geocoding — όλα μαζί
+    const results = await Promise.all(
+      candidates.map(({ loc }) => geocode(loc))
+    )
+
+    const pins = []
+    candidates.forEach(({ t, rec, loc, autoNote }, i) => {
+      const coords = results[i]
+      if (!coords) return
       pins.push({
         tr: t.tr,
         alias: t.alias || t.tr,
@@ -180,7 +188,7 @@ export default function Dashboard() {
         notes: rec?.co || autoNote,
         auto: !rec?.ct && !!autoNote,
       })
-    }
+    })
     setTruckPins(pins)
   }
 
@@ -590,14 +598,8 @@ export default function Dashboard() {
 }
 
 function StatusBadge({ status }) {
-  const map = {
-    'Open':           'bg-blue-900/60 text-blue-300',
-    'Ανατεθειμένη':  'bg-orange-900/60 text-orange-300',
-    'Μεταφορά':       'bg-green-900/60 text-green-300',
-    'Παράδοση':       'bg-purple-900/60 text-purple-300',
-  }
   return (
-    <span className={`text-xs px-1.5 py-0.5 rounded-md shrink-0 ${map[status] || 'bg-slate-600 text-slate-300'}`}>
+    <span className={`text-xs px-1.5 py-0.5 rounded-md border shrink-0 ${STATUS_COLORS[status] || 'bg-slate-700 text-slate-300 border-slate-600'}`}>
       {status}
     </span>
   )

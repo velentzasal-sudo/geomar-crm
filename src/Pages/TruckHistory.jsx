@@ -3,15 +3,7 @@ import { supabase } from '../lib/supabase'
 import { format, parseISO } from 'date-fns'
 import { el } from 'date-fns/locale'
 
-const STATUS_COLORS = {
-  'Open':          'bg-blue-900/50 text-blue-300 border-blue-700',
-  'Ανατεθειμένη': 'bg-orange-900/50 text-orange-300 border-orange-700',
-  'Μεταφορά':      'bg-green-900/50 text-green-300 border-green-700',
-  'Παράδοση':      'bg-purple-900/50 text-purple-300 border-purple-700',
-  'Delivered':     'bg-slate-700 text-slate-400 border-slate-600',
-}
-
-const LDM_FACTORS = { E: 0.40, B: 0.50, P: 0.60, M: 1.00 }
+import { STATUS_COLORS, LDM_FACTORS } from '../lib/constants'
 
 function calcLdm(o) {
   return parseFloat(o.ldm) || (o.pal && o.qty ? (LDM_FACTORS[o.pal] || 0) * parseFloat(o.qty) : 0)

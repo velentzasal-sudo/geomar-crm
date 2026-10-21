@@ -4,8 +4,8 @@ import { supabase } from '../lib/supabase'
 import { format, startOfMonth, endOfMonth, startOfWeek, addDays, isSameMonth, isToday, isSameDay } from 'date-fns'
 import { el } from 'date-fns/locale'
 
-const TLDM = 13.20
-const LDM_FACTORS = { E: 0.40, B: 0.50, P: 0.60, M: 1.00 }
+import { TLDM, LDM_FACTORS, STATUS_COLORS } from '../lib/constants'
+
 const STATUSES = ['Open', 'Ανατεθειμένη', 'Μεταφορά', 'Παράδοση', 'Delivered']
 const PAL_TYPES = ['E', 'B', 'P', 'M', 'χύμα']
 const ORDER_EMPTY = {
@@ -17,14 +17,6 @@ function calcLdmVal(pal, qty) {
   if (!qty || pal === 'χύμα') return ''
   const f = LDM_FACTORS[pal]
   return f ? (parseFloat(qty) * f).toFixed(2) : ''
-}
-
-const STATUS_COLORS = {
-  'Open':          'bg-blue-600',
-  'Ανατεθειμένη': 'bg-orange-500',
-  'Μεταφορά':      'bg-orange-500', // legacy
-  'Παράδοση':      'bg-orange-500', // legacy
-  'Delivered':     'bg-slate-600',
 }
 
 const AVAIL_STATUSES = [
