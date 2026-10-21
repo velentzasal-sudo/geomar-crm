@@ -84,6 +84,8 @@ export default function Dashboard() {
   const [editSaving, setEditSaving] = useState(false)
   const [truckPins,  setTruckPins]  = useState([]) // [{ tr, alias, lat, lng, status, location, notes }]
   const [truckDropdown, setTruckDropdown] = useState(false)
+  const [dropdownPos, setDropdownPos] = useState({ top: 0, right: 0 })
+  const dropdownBtnRef = useRef(null)
   const [showAllOrders, setShowAllOrders] = useState(false)
 
   const AVAIL_STATUSES = [
@@ -118,17 +120,30 @@ export default function Dashboard() {
   }
 
   async function buildPins(trk, avData, ord) {
-    // Merge avail + orders για τοποθεσία
     const availMap = {}
     avData.forEach(a => { availMap[a.tr] = a })
 
     const pins = []
     for (const t of trk) {
       const rec = availMap[t.tr]
-      const loc = rec?.ct || (() => {
-        const o = ord.find(o => o.truck === t.tr && ['Μεταφορά','Ανατεθειμένη','Παράδοση'].includes(o.status))
-        return o ? (o.to || o.from || '') : ''
-      })()
+      // Τοποθεσία: 1) manual avail, 2) auto από παραγγελία
+      let loc = rec?.ct || ''
+      let autoNote = ''
+      if (!loc) {
+        // "Ανατεθειμένη" → φορτώνει από το from
+        // "Μεταφορά" / "Παράδοση" → κινείται προς το to
+        const activeOrder = ord.find(o => o.truck === t.tr &&
+          ['Μεταφορά','Ανατεθειμένη','Παράδοση'].includes(o.status))
+        if (activeOrder) {
+          if (activeOrder.status === 'Ανατεθειμένη') {
+            loc = activeOrder.from || ''
+            autoNote = `→ ${activeOrder.to || ''} (${activeOrder.client})`
+          } else {
+            loc = activeOrder.to || activeOrder.from || ''
+            autoNote = `${activeOrder.client} · ${activeOrder.status}`
+          }
+        }
+      }
       if (!loc) continue
       const coords = await geocode(loc)
       if (!coords) continue
@@ -139,7 +154,8 @@ export default function Dashboard() {
         lng: coords[1],
         status: rec?.nt || 'Εν κινήσει',
         location: loc,
-        notes: rec?.co || '',
+        notes: rec?.co || autoNote,
+        auto: !rec?.ct && !!autoNote,
       })
     }
     setTruckPins(pins)
@@ -232,11 +248,17 @@ export default function Dashboard() {
       {/* ── 1. ΣΗΜΕΡΑ ── */}
       {(loadingToday.length > 0 || deliveryToday.length > 0) && (
         <div className="bg-slate-800 border border-slate-700 rounded-2xl p-4">
-          <p className="text-white font-bold text-sm mb-3">📅 Σήμερα</p>
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-white font-bold text-sm">📅 Σήμερα</p>
+            <button onClick={() => navigate('/orders')}
+              className="text-xs text-blue-400 hover:text-blue-300 transition-colors">
+              Δες όλες →
+            </button>
+          </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {loadingToday.length > 0 && (
               <div>
-                <p className="text-blue-400 text-xs font-medium uppercase tracking-wide mb-2">📦 Φορτώσεις</p>
+                <p className="text-blue-400 text-xs font-medium uppercase tracking-wide mb-2">📦 Φορτώσεις ({loadingToday.length})</p>
                 <div className="space-y-1.5">
                   {loadingToday.map(o => (
                     <button key={o.id} onClick={() => navigate(`/orders?open=${o.id}`)}
@@ -328,14 +350,24 @@ export default function Dashboard() {
         <div className="flex items-center justify-between mb-3">
           <p className="text-white font-bold text-sm">🗺️ Τοποθεσία Φορτηγών</p>
           <div className="relative">
-            <button onClick={() => setTruckDropdown(v => !v)}
+            <button
+              ref={dropdownBtnRef}
+              onClick={() => {
+                if (!truckDropdown && dropdownBtnRef.current) {
+                  const r = dropdownBtnRef.current.getBoundingClientRect()
+                  setDropdownPos({ top: r.bottom + 6, right: window.innerWidth - r.right })
+                }
+                setTruckDropdown(v => !v)
+              }}
               className="text-xs bg-slate-700 hover:bg-slate-600 border border-slate-600 text-slate-300 px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1">
               ✏️ Ενημέρωση <span className="text-slate-500">{truckDropdown ? '▲' : '▼'}</span>
             </button>
             {truckDropdown && (
               <>
-                <div className="fixed inset-0 z-10" onClick={() => setTruckDropdown(false)} />
-                <div className="absolute right-0 top-full mt-1 bg-slate-700 border border-slate-600 rounded-xl shadow-xl z-20 w-48 overflow-hidden max-h-64 overflow-y-auto">
+                <div className="fixed inset-0 z-[9998]" onClick={() => setTruckDropdown(false)} />
+                <div
+                  className="fixed bg-slate-700 border border-slate-600 rounded-xl shadow-2xl z-[9999] w-48 overflow-hidden max-h-64 overflow-y-auto"
+                  style={{ top: dropdownPos.top, right: dropdownPos.right }}>
                   {trucks.map(t => (
                     <button key={t.tr} onClick={() => { openEdit(t); setTruckDropdown(false) }}
                       className="w-full text-left px-3 py-2.5 text-sm text-slate-200 hover:bg-slate-600 transition-colors flex items-center gap-2 border-b border-slate-600/50 last:border-0">
@@ -367,11 +399,11 @@ export default function Dashboard() {
               {truckPins.map(p => (
                 <Marker key={p.tr} position={[p.lat, p.lng]} icon={truckIcon(p.alias || p.tr)}>
                   <Popup>
-                    <div style={{ minWidth: 120 }}>
+                    <div style={{ minWidth: 140 }}>
                       <p style={{ fontWeight: 700, margin: 0 }}>🚛 {p.alias || p.tr}</p>
-                      <p style={{ margin: '2px 0', color: '#64748b', fontSize: 12 }}>{p.location}</p>
+                      <p style={{ margin: '2px 0', color: '#64748b', fontSize: 12 }}>{p.location}{p.auto ? ' 📋' : ''}</p>
                       {p.notes && <p style={{ margin: 0, fontSize: 12 }}>{p.notes}</p>}
-                      <p style={{ margin: '4px 0 0', fontSize: 12, fontWeight: 600 }}>{p.status}</p>
+                      <p style={{ margin: '4px 0 0', fontSize: 12, fontWeight: 600 }}>{p.auto ? 'Αυτόματο από παραγγελία' : p.status}</p>
                     </div>
                   </Popup>
                 </Marker>
@@ -472,7 +504,7 @@ export default function Dashboard() {
 
       {/* ── EDIT AVAIL MODAL ── */}
       {editModal && (
-        <div className="fixed inset-0 bg-black/60 flex items-end sm:items-center justify-center z-50 p-0 sm:p-4"
+        <div className="fixed inset-0 bg-black/60 flex items-end sm:items-center justify-center z-[10000] p-0 sm:p-4"
           onClick={e => { if (e.target === e.currentTarget) setEditModal(null) }}>
           <div className="bg-slate-800 rounded-t-3xl sm:rounded-3xl border border-slate-700 w-full sm:max-w-sm p-6 space-y-4">
             <div className="flex items-start justify-between">
