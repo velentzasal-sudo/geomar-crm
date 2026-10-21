@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { format, parseISO, addDays } from 'date-fns'
 import { el } from 'date-fns/locale'
+import { TLDM, LDM_FACTORS, STATUS_COLORS } from '../lib/constants'
 
 function genUUID() {
   return crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2) + Date.now().toString(36)
@@ -92,14 +93,6 @@ function SearchableSelect({ label, value, onChange, options, placeholder = '— 
 
 const STATUSES = ['Open', 'Ανατεθειμένη', 'Delivered']
 const PAL_TYPES = ['E', 'B', 'P', 'M', 'χύμα']
-const LDM_FACTORS = { E: 0.40, B: 0.50, P: 0.60, M: 1.00 }
-const TLDM = 13.20
-
-const STATUS_COLORS = {
-  'Open':          'bg-blue-900/50 text-blue-300 border-blue-700',
-  'Ανατεθειμένη': 'bg-orange-900/50 text-orange-300 border-orange-700',
-  'Delivered':     'bg-slate-700 text-slate-400 border-slate-600',
-}
 
 const EMPTY = {
   client:'', firm:'', from:'', to:'', recip:'',
@@ -614,9 +607,6 @@ export default function Orders() {
     }
     return 0 // default: created_at order from DB
   })
-
-  const totalLdm = filtered.reduce((s, o) => s + (parseFloat(o.ldm) || 0), 0)
-  const ldmPct = Math.min(100, (totalLdm / TLDM) * 100)
 
   // Trucks with active orders for dispatch view
   const activeTrucks = trucks.filter(t =>
