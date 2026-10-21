@@ -86,6 +86,19 @@ export default function Dashboard() {
   const [truckDropdown, setTruckDropdown] = useState(false)
   const [dropdownPos, setDropdownPos] = useState({ top: 0, right: 0 })
   const dropdownBtnRef = useRef(null)
+
+  // Ενημέρωση θέσης dropdown στο scroll
+  useEffect(() => {
+    if (!truckDropdown) return
+    function updatePos() {
+      if (dropdownBtnRef.current) {
+        const r = dropdownBtnRef.current.getBoundingClientRect()
+        setDropdownPos({ top: r.bottom + 6, right: window.innerWidth - r.right })
+      }
+    }
+    window.addEventListener('scroll', updatePos, true)
+    return () => window.removeEventListener('scroll', updatePos, true)
+  }, [truckDropdown])
   const [showAllOrders, setShowAllOrders] = useState(false)
 
   const AVAIL_STATUSES = [
