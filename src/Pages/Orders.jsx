@@ -1,8 +1,23 @@
 import { useEffect, useState, useRef } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { format, parseISO } from 'date-fns'
+import { format, parseISO, addDays } from 'date-fns'
 import { el } from 'date-fns/locale'
+
+function genUUID() {
+  return crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2) + Date.now().toString(36)
+}
+
+// Επιστρέφει YYYY-MM-DD για σήμερα
+function today() { return new Date().toISOString().substring(0, 10) }
+
+// +7 μέρες σε YYYY-MM-DD string
+function plusWeek(ds) {
+  if (!ds) return null
+  const d = new Date(ds)
+  d.setDate(d.getDate() + 7)
+  return d.toISOString().substring(0, 10)
+}
 
 // Searchable dropdown component
 function SearchableSelect({ label, value, onChange, options, placeholder = '— Αναζήτηση —', error = false }) {
@@ -91,6 +106,7 @@ const EMPTY = {
   pal:'E', qty:'', ldm:'', wgt:'', tmp:'',
   pal2:'E', qty2:'',
   rdy:'', load_date:'', delivery_date:'', price:'', notes:'', status:'Open', truck:'',
+  is_recurring: false, recurring_id: null,
 }
 
 const TEMP_OPTIONS = [
@@ -130,6 +146,8 @@ export default function Orders() {
   const [errors, setErrors] = useState({})
   const [filterMonth, setFilterMonth] = useState('')  // 'YYYY-MM' or ''
   const [sortBy, setSortBy] = useState('created')     // 'created' | 'load_date' | 'delivery_date'
+  const [recurringDue, setRecurringDue] = useState([]) // παραγγελίες που χρειάζονται κλωνάρισμα
+  const [cloningRecurring, setCloningRecurring] = useState(false)
 
   useEffect(() => { loadAll() }, [])
   useEffect(() => { if (!loading) loadOrders() }, [showDelivered])
@@ -155,6 +173,8 @@ export default function Orders() {
     const loaded = data || []
     setOrders(loaded)
     setLoading(false)
+    // Έλεγχος για εβδομαδιαίες που χρειάζονται κλωνάρισμα αυτή την εβδομάδα
+    checkRecurringDue(loaded)
     // If ?open=<id> in URL, open that order's modal
     const openId = searchParams.get('open')
     if (openId) {
@@ -164,6 +184,83 @@ export default function Orders() {
         setSearchParams({})
       }
     }
+  }
+
+  function checkRecurringDue(allOrders) {
+    const todayStr = today()
+    // Βρες όλες τις is_recurring=true παραγγελίες
+    const recurring = allOrders.filter(o => o.is_recurring && o.recurring_id)
+    if (recurring.length === 0) { setRecurringDue([]); return }
+
+    // Για κάθε recurring_id, βρες την πιο πρόσφατη (μεγαλύτερη load_date)
+    const byId = {}
+    recurring.forEach(o => {
+      const ds = o.load_date || o.rdy || ''
+      if (!byId[o.recurring_id] || ds > (byId[o.recurring_id].load_date || byId[o.recurring_id].rdy || '')) {
+        byId[o.recurring_id] = o
+      }
+    })
+
+    // Αν η πιο πρόσφατη είναι παλαιότερη από σήμερα, χρειάζεται κλωνάρισμα
+    const due = Object.values(byId).filter(o => {
+      const lastDate = o.load_date || o.rdy || ''
+      return lastDate < todayStr
+    })
+    setRecurringDue(due)
+  }
+
+  async function cloneRecurring() {
+    if (recurringDue.length === 0) return
+    setCloningRecurring(true)
+    const todayStr = today()
+
+    for (const o of recurringDue) {
+      // Βρες όλες τις παραγγελίες της ίδιας σειράς
+      const allOfSeries = orders.filter(x => x.recurring_id === o.recurring_id)
+      const lastDate = allOfSeries.reduce((max, x) => {
+        const ds = x.load_date || x.rdy || ''
+        return ds > max ? ds : max
+      }, '')
+
+      // Δημιούργησε παραγγελίες +7 μέρες μέχρι να φτάσουμε σήμερα ή μετά
+      let nextDate = plusWeek(lastDate)
+      while (nextDate && nextDate <= todayStr) {
+        const { _id, id, created_at, updated_at, ...rest } = o
+        const payload = {
+          ...rest,
+          status: 'Open',
+          truck: null,
+          load_date: nextDate,
+          delivery_date: o.delivery_date ? plusWeek(o.delivery_date) : null,
+          rdy: o.rdy ? plusWeek(o.rdy) : null,
+        }
+        await supabase.from('orders').insert([payload])
+        nextDate = plusWeek(nextDate)
+      }
+    }
+
+    setCloningRecurring(false)
+    await loadOrders()
+  }
+
+  async function disableRecurring(o) {
+    const todayStr = today()
+    // Αφαίρεση is_recurring από αυτή και μελλοντικές της ίδιας σειράς
+    const seriesOrders = orders.filter(x => x.recurring_id === o.recurring_id)
+    const futureIds = seriesOrders
+      .filter(x => (x.load_date || x.rdy || '') >= todayStr && x.id !== o.id)
+      .map(x => x.id)
+
+    // Διαγραφή μελλοντικών
+    if (futureIds.length > 0) {
+      await supabase.from('orders').delete().in('id', futureIds)
+    }
+    // Απενεργοποίηση recurring σε όλες της σειράς (που μένουν)
+    await supabase.from('orders')
+      .update({ is_recurring: false, recurring_id: null })
+      .eq('recurring_id', o.recurring_id)
+
+    await loadOrders()
   }
 
   function calcLdm(pal, qty) {
@@ -195,9 +292,14 @@ export default function Orders() {
   }
 
   function handleChange(e) {
-    const { name, value } = e.target
+    const { name, value, type, checked } = e.target
+    const val = type === 'checkbox' ? checked : value
     setForm(f => {
-      const next = { ...f, [name]: value }
+      const next = { ...f, [name]: val }
+      // Αν απενεργοποιούμε recurring → καλούμε disableRecurring μετά το save
+      if (name === 'is_recurring' && !checked && f.recurring_id && editing) {
+        next._disableRecurring = true
+      }
       if (['qty','pal','qty2','pal2'].includes(name)) {
         next.ldm = calcTotalLdm(next.pal, next.qty, next.pal2, next.qty2)
       }
@@ -259,6 +361,10 @@ export default function Orders() {
     setErrors({})
     setSaving(true)
     const { id: _id, _show2, ...rest } = form
+    // Αν is_recurring=true και δεν έχει recurring_id, δημιούργησε ένα
+    const recurringId = form.is_recurring
+      ? (form.recurring_id || genUUID())
+      : null
     const payload = {
       ...rest,
       qty:   parseFloat(form.qty)   || 0,
@@ -270,6 +376,8 @@ export default function Orders() {
       delivery_date: form.delivery_date || null,
       rdy:           form.rdy           || null,
       truck:         form.truck         || null,
+      is_recurring:  form.is_recurring  || false,
+      recurring_id:  recurringId,
     }
 
     // Κανόνας 1: Φορτηγό → Ανατεθειμένη
@@ -288,6 +396,15 @@ export default function Orders() {
     if (editing) {
       const { error } = await supabase.from('orders').update(payload).eq('id', editing)
       if (error) { console.error('Update error:', error); setSaving(false); return }
+      // Αν ξεπατήθηκε το recurring → διαγραφή μελλοντικών
+      if (form._disableRecurring && form.recurring_id) {
+        const todayStr = today()
+        const futureIds = orders
+          .filter(x => x.recurring_id === form.recurring_id && x.id !== editing && (x.load_date || x.rdy || '') >= todayStr)
+          .map(x => x.id)
+        if (futureIds.length > 0) await supabase.from('orders').delete().in('id', futureIds)
+        await supabase.from('orders').update({ is_recurring: false, recurring_id: null }).eq('recurring_id', form.recurring_id)
+      }
     } else {
       const { error } = await supabase.from('orders').insert([payload])
       if (error) { console.error('Insert error:', error); setSaving(false); return }
@@ -565,6 +682,35 @@ export default function Orders() {
       </div>
 
 
+      {/* Banner εβδομαδιαίων */}
+      {recurringDue.length > 0 && (
+        <div className="bg-blue-900/30 border border-blue-700/50 rounded-2xl px-4 py-3 flex items-center gap-3 flex-wrap">
+          <span className="text-2xl">🔁</span>
+          <div className="flex-1 min-w-0">
+            <p className="text-blue-200 font-medium text-sm">
+              {recurringDue.length === 1
+                ? '1 εβδομαδιαία παραγγελία'
+                : `${recurringDue.length} εβδομαδιαίες παραγγελίες`} χρειάζονται κλωνάρισμα για αυτή την εβδομάδα
+            </p>
+            <p className="text-blue-400 text-xs mt-0.5">
+              {recurringDue.map(o => o.client).join(', ')}
+            </p>
+          </div>
+          <button
+            onClick={cloneRecurring}
+            disabled={cloningRecurring}
+            className="shrink-0 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white px-4 py-2 rounded-xl text-sm font-medium transition-colors"
+          >
+            {cloningRecurring ? 'Δημιουργία...' : '✓ Δημιουργία'}
+          </button>
+          <button
+            onClick={() => setRecurringDue([])}
+            className="shrink-0 text-slate-500 hover:text-white text-lg px-1"
+            title="Παράβλεψη"
+          >×</button>
+        </div>
+      )}
+
       {loading ? (
         <p className="text-slate-400">Φόρτωση...</p>
       ) : filtered.length === 0 ? (
@@ -585,7 +731,10 @@ export default function Orders() {
                     {o.status}
                   </button>
                   <div className="flex-1 min-w-0">
-                    <p className="text-white font-medium text-sm truncate">{o.client}</p>
+                    <p className="text-white font-medium text-sm truncate">
+                      {o.client}
+                      {o.is_recurring && <span className="ml-1.5 text-blue-400 text-xs">🔁</span>}
+                    </p>
                     <p className="text-slate-400 text-xs truncate">{o.firm}{o.firm && (o.from || o.to) ? ' · ' : ''}{o.from && o.to ? `${o.from} → ${o.to}` : (o.from || o.to || '')}</p>
                   </div>
                   {/* Actions — always visible on mobile (right side) */}
@@ -765,6 +914,33 @@ export default function Orders() {
                   <label className="block text-xs text-slate-400 mb-1">Σημειώσεις</label>
                   <textarea name="notes" value={form.notes} onChange={handleChange} rows={2}
                     className="w-full bg-slate-700 border border-slate-600 rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500 resize-none" />
+                </div>
+
+                {/* Εβδομαδιαία επανάληψη */}
+                <div className="col-span-2">
+                  <label className={`flex items-center gap-3 px-4 py-3 rounded-xl border cursor-pointer transition-colors ${
+                    form.is_recurring
+                      ? 'bg-blue-900/30 border-blue-700/60'
+                      : 'bg-slate-700/50 border-slate-600 hover:bg-slate-700'
+                  }`}>
+                    <input
+                      type="checkbox"
+                      name="is_recurring"
+                      checked={!!form.is_recurring}
+                      onChange={handleChange}
+                      className="w-4 h-4 accent-blue-500"
+                    />
+                    <div>
+                      <p className="text-white text-sm font-medium">🔁 Εβδομαδιαία επανάληψη</p>
+                      {form.is_recurring
+                        ? <p className="text-blue-300 text-xs">Κλωνάρεται αυτόματα κάθε εβδομάδα — ξεπάτησε για ακύρωση</p>
+                        : <p className="text-slate-500 text-xs">Ενεργοποίηση για αυτόματη επανάληψη κάθε εβδομάδα</p>
+                      }
+                    </div>
+                  </label>
+                  {form.is_recurring && form._disableRecurring && (
+                    <p className="text-orange-400 text-xs mt-1 pl-1">⚠️ Κατά την αποθήκευση θα διαγραφούν οι μελλοντικές παραγγελίες</p>
+                  )}
                 </div>
               </div>
 
