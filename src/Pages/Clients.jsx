@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { format, parseISO, addMonths, isToday, isPast } from 'date-fns'
 import { el } from 'date-fns/locale'
@@ -19,6 +20,7 @@ export default function Clients() {
   const [showDebt, setShowDebt] = useState(false)
   const [sortBy, setSortBy] = useState('debt_desc') // 'debt_desc','debt_asc','name_asc','name_desc'
   const [showPendingDrawer, setShowPendingDrawer] = useState(false)
+  const [searchParams] = useSearchParams()
 
   // Import state
   const [importPreview, setImportPreview] = useState(null) // {matched, unmatched}
@@ -43,6 +45,12 @@ export default function Clients() {
     setOrders(ord || [])
     setPayments(pay || [])
     setLoading(false)
+    // Αν ήρθαμε από Dashboard με ?open=<id>, ανοίγουμε τον πελάτη αυτόματα
+    const openId = searchParams.get('open')
+    if (openId && cl) {
+      const found = cl.find(c => String(c.id) === String(openId))
+      if (found) setDetailClient(found)
+    }
   }
 
   function openNew() { setEditing(null); setForm(EMPTY); setShowModal(true) }

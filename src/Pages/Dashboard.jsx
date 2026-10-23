@@ -87,6 +87,7 @@ export default function Dashboard() {
   const [truckDropdown, setTruckDropdown] = useState(false)
   const [dropdownPos, setDropdownPos] = useState({ top: 0, right: 0 })
   const dropdownBtnRef = useRef(null)
+  const [ordersTab, setOrdersTab] = useState('today')
 
   // Ενημέρωση θέσης dropdown στο scroll
   useEffect(() => {
@@ -100,8 +101,6 @@ export default function Dashboard() {
     window.addEventListener('scroll', updatePos, true)
     return () => window.removeEventListener('scroll', updatePos, true)
   }, [truckDropdown])
-  const [showAllOrders, setShowAllOrders] = useState(false)
-
   const AVAIL_STATUSES = [
     { key: 'Διαθέσιμο',  color: 'bg-green-900/60 text-green-300 border-green-700' },
     { key: 'Εν κινήσει', color: 'bg-cyan-900/60 text-cyan-300 border-cyan-700' },
@@ -230,12 +229,19 @@ export default function Dashboard() {
   const in7days = addDays(today, 7)
   const todayStr = format(today, 'yyyy-MM-dd')
 
-  // Σήμερα: φορτώσεις & παραδόσεις
-  const loadingToday   = orders.filter(o => (o.load_date || o.rdy || '').substring(0,10) === todayStr)
-  const deliveryToday  = orders.filter(o => (o.delivery_date || '').substring(0,10) === todayStr)
-
   // Ανοιχτές παραγγελίες (όχι Delivered)
   const openOrders = orders.filter(o => o.status !== 'Delivered')
+
+  // Εβδομάδα: Δευτέρα έως Κυριακή της τρέχουσας εβδομάδας
+  const weekStart = format(addDays(today, -((today.getDay() + 6) % 7)), 'yyyy-MM-dd')
+  const weekEnd   = format(addDays(today,  6 - ((today.getDay() + 6) % 7)), 'yyyy-MM-dd')
+  const inThisWeek = d => d >= weekStart && d <= weekEnd
+
+  // Tabs
+  const todayOrders     = openOrders.filter(o => (o.load_date || o.rdy || '').substring(0,10) === todayStr)
+  const unassignedToday = openOrders.filter(o => (o.load_date || o.rdy || '').substring(0,10) === todayStr && o.status === 'Open')
+  const weekOpen        = openOrders.filter(o => inThisWeek((o.load_date || o.rdy || '').substring(0,10)))
+  const weekAssigned    = openOrders.filter(o => inThisWeek((o.load_date || o.rdy || '').substring(0,10)) && o.status !== 'Open')
 
   // Επόμενες 7 μέρες
   const cardsOverdue = clients.filter(c => {
@@ -276,102 +282,61 @@ export default function Dashboard() {
         <p className="text-slate-500 text-xs md:text-sm">{format(today, 'EEE d MMM yyyy', { locale: el })}</p>
       </div>
 
-      {/* ── 1. ΣΗΜΕΡΑ ── */}
-      {(loadingToday.length > 0 || deliveryToday.length > 0) && (
-        <div className="bg-slate-800 border border-slate-700 rounded-2xl p-4">
-          <div className="flex items-center justify-between mb-3">
-            <p className="text-white font-bold text-sm">📅 Σήμερα</p>
-            <button onClick={() => navigate('/orders')}
-              className="text-xs text-blue-400 hover:text-blue-300 transition-colors">
-              Δες όλες →
-            </button>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {loadingToday.length > 0 && (
-              <div>
-                <p className="text-blue-400 text-xs font-medium uppercase tracking-wide mb-2">📦 Φορτώσεις ({loadingToday.length})</p>
-                <div className="space-y-1.5">
-                  {loadingToday.map(o => (
-                    <button key={o.id} onClick={() => navigate(`/orders?open=${o.id}`)}
-                      className="w-full text-left bg-slate-700 hover:bg-slate-600 rounded-xl px-3 py-2 transition-colors">
-                      <p className="text-white text-sm font-medium truncate">{o.client}</p>
-                      <p className="text-slate-400 text-xs truncate">{o.from} → {o.to}</p>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-            {deliveryToday.length > 0 && (
-              <div>
-                <p className="text-green-400 text-xs font-medium uppercase tracking-wide mb-2">🏁 Παραδόσεις</p>
-                <div className="space-y-1.5">
-                  {deliveryToday.map(o => (
-                    <button key={o.id} onClick={() => navigate(`/orders?open=${o.id}`)}
-                      className="w-full text-left bg-slate-700 hover:bg-slate-600 rounded-xl px-3 py-2 transition-colors">
-                      <p className="text-white text-sm font-medium truncate">{o.client}</p>
-                      <p className="text-slate-400 text-xs truncate">{o.to}</p>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* ── 2. ΑΝΟΙΧΤΕΣ ΠΑΡΑΓΓΕΛΙΕΣ ── */}
+      {/* ── 1. ΠΑΡΑΓΓΕΛΙΕΣ (tabs) ── */}
       {(() => {
-        const PREVIEW = 5
-        const shown = showAllOrders ? openOrders : openOrders.slice(0, PREVIEW)
-        // Ομαδοποίηση ανά status για σύνοψη
-        const byStatus = openOrders.reduce((acc, o) => {
-          acc[o.status] = (acc[o.status] || 0) + 1
-          return acc
-        }, {})
+        const TABS = [
+          { key: 'today',      label: 'Σήμερα',          count: todayOrders.length,     color: 'text-blue-400',   orders: todayOrders },
+          { key: 'unassigned', label: 'Αναπόθετες σήμερα', count: unassignedToday.length, color: 'text-red-400',    orders: unassignedToday },
+          { key: 'week',       label: 'Εβδομάδα',         count: weekOpen.length,        color: 'text-slate-300',  orders: weekOpen },
+          { key: 'assigned',   label: 'Ανατεθειμένες',    count: weekAssigned.length,    color: 'text-green-400',  orders: weekAssigned },
+        ]
+        const active = TABS.find(t => t.key === ordersTab) || TABS[0]
         return (
           <div className="bg-slate-800 border border-slate-700 rounded-2xl p-4">
-            <div className="flex items-center justify-between mb-3">
-              <p className="text-white font-bold text-sm">📦 Ανοιχτές Παραγγελίες</p>
-              <div className="flex items-center gap-2">
-                {/* Status pills σύνοψη */}
-                <div className="hidden sm:flex gap-1">
-                  {Object.entries(byStatus).map(([st, cnt]) => (
-                    <span key={st} className="text-xs px-1.5 py-0.5 rounded-md bg-slate-700 text-slate-300">{cnt} {st}</span>
-                  ))}
-                </div>
-                <span className="text-slate-500 text-xs font-bold">{openOrders.length}</span>
-              </div>
+            {/* Tab bar */}
+            <div className="grid grid-cols-4 gap-1 mb-4">
+              {TABS.map(t => (
+                <button key={t.key} onClick={() => setOrdersTab(t.key)}
+                  className={`rounded-xl px-2 py-2.5 text-center transition-colors ${
+                    ordersTab === t.key
+                      ? 'bg-slate-700 border border-slate-500'
+                      : 'hover:bg-slate-700/50'
+                  }`}>
+                  <p className={`text-lg font-bold ${t.color}`}>{t.count}</p>
+                  <p className="text-slate-400 text-xs leading-tight mt-0.5">{t.label}</p>
+                </button>
+              ))}
             </div>
+
+            {/* Λίστα παραγγελιών */}
             {loading ? (
               <p className="text-slate-500 text-sm">Φόρτωση...</p>
-            ) : openOrders.length === 0 ? (
-              <p className="text-slate-500 text-sm">Δεν υπάρχουν</p>
+            ) : active.orders.length === 0 ? (
+              <p className="text-slate-500 text-sm text-center py-3">Δεν υπάρχουν</p>
             ) : (
-              <>
-                <div className="space-y-1">
-                  {shown.map(o => (
-                    <button key={o.id} onClick={() => navigate(`/orders?open=${o.id}`)}
-                      className="w-full bg-slate-700/70 hover:bg-slate-600 rounded-xl px-3 py-1.5 flex items-center gap-2 text-left transition-colors">
-                      <StatusBadge status={o.status} />
-                      <div className="flex-1 min-w-0">
-                        <p className="text-white text-xs font-medium truncate">{o.client}</p>
-                        <p className="text-slate-400 text-xs truncate">{o.from} → {o.to}</p>
-                      </div>
-                      <div className="text-right shrink-0">
-                        <p className="text-slate-400 text-xs">{o.qty} {o.pal === 'E' ? 'EPAL' : o.pal}</p>
-                        {o.truck && <p className="text-slate-500 text-xs">🚚 {o.truck}</p>}
-                      </div>
-                    </button>
-                  ))}
-                </div>
-                {openOrders.length > PREVIEW && (
-                  <button onClick={() => setShowAllOrders(v => !v)}
-                    className="mt-2 w-full text-center text-xs text-blue-400 hover:text-blue-300 py-1.5 transition-colors">
-                    {showAllOrders ? '▲ Λιγότερες' : `▼ +${openOrders.length - PREVIEW} ακόμα`}
+              <div className="space-y-1 max-h-72 overflow-y-auto">
+                {active.orders.map(o => (
+                  <button key={o.id} onClick={() => navigate(`/orders?open=${o.id}`)}
+                    className="w-full bg-slate-700/70 hover:bg-slate-600 rounded-xl px-3 py-2 flex items-center gap-2 text-left transition-colors">
+                    <StatusBadge status={o.status} />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-white text-xs font-medium truncate">{o.client}</p>
+                      <p className="text-slate-400 text-xs truncate">{o.from} → {o.to}</p>
+                    </div>
+                    <div className="text-right shrink-0">
+                      {o.load_date && <p className="text-slate-500 text-xs">{format(parseISO(o.load_date), 'd MMM', { locale: el })}</p>}
+                      <p className="text-slate-400 text-xs">{o.qty} {o.pal === 'E' ? 'EPAL' : o.pal}</p>
+                      {o.truck && <p className="text-slate-500 text-xs">🚚 {o.truck}</p>}
+                    </div>
                   </button>
-                )}
-              </>
+                ))}
+              </div>
             )}
+
+            <button onClick={() => navigate('/orders')}
+              className="mt-3 w-full text-center text-xs text-blue-400 hover:text-blue-300 py-1 transition-colors">
+              Δες όλες →
+            </button>
           </div>
         )
       })()}
@@ -497,7 +462,9 @@ export default function Dashboard() {
             {payments.map(p => {
               const overdue = p.due_date && isPast(parseISO(p.due_date)) && !isToday(parseISO(p.due_date))
               return (
-                <div key={p.id} className={`flex items-center justify-between rounded-xl px-3 py-2 ${overdue ? 'bg-red-900/20' : 'bg-slate-700'}`}>
+                <button key={p.id}
+                  onClick={() => navigate(p.client_id ? `/clients?open=${p.client_id}` : '/clients')}
+                  className={`w-full flex items-center justify-between rounded-xl px-3 py-2 text-left transition-colors ${overdue ? 'bg-red-900/20 hover:bg-red-900/40' : 'bg-slate-700 hover:bg-slate-600'}`}>
                   <div className="min-w-0">
                     <p className="text-white text-sm font-medium truncate">{p.client_name}</p>
                     {p.notes && <p className="text-slate-400 text-xs truncate">{p.notes}</p>}
@@ -510,7 +477,7 @@ export default function Dashboard() {
                       </p>
                     )}
                   </div>
-                </div>
+                </button>
               )
             })}
           </div>
