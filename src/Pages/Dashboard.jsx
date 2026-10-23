@@ -409,27 +409,6 @@ export default function Dashboard() {
         )}
       </div>
 
-      {/* ── 4. ΕΠΟΜΕΝΕΣ 7 ΜΕΡΕΣ ── */}
-      {(cardsSoon.length > 0 || soonPayments.length > 0) && (
-        <div className="bg-amber-950/40 border border-amber-700/40 rounded-2xl p-4">
-          <p className="text-amber-400 font-semibold text-xs uppercase tracking-wide mb-2">⏰ Επόμενες 7 ημέρες</p>
-          <div className="space-y-1.5">
-            {cardsSoon.map(c => (
-              <div key={c.id} className="flex justify-between bg-slate-800 rounded-xl px-3 py-2">
-                <span className="text-slate-200 text-sm truncate">📅 {c.name}</span>
-                <span className="text-amber-400 text-xs shrink-0 ml-2">{format(parseISO(c.next_card_date), 'EEE d MMM', { locale: el })}</span>
-              </div>
-            ))}
-            {soonPayments.map(p => (
-              <div key={p.id} className="flex justify-between bg-slate-800 rounded-xl px-3 py-2">
-                <span className="text-slate-200 text-sm truncate">💰 {p.client_name}</span>
-                <span className="text-amber-400 text-xs shrink-0 ml-2">€{(parseFloat(p.amount)||0).toLocaleString('el-GR')} · {format(parseISO(p.due_date), 'EEE d MMM', { locale: el })}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
       {/* ── 5. ALERTS ── */}
       {hasAlerts && (
         <div className="bg-red-950/60 border border-red-700/70 rounded-2xl p-4">
@@ -451,20 +430,28 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* ── 6. ΕΚΚΡΕΜΕΙΣ ΠΛΗΡΩΜΕΣ ── */}
-      {payments.length > 0 && (
-        <div className="bg-slate-800 border border-slate-700 rounded-2xl p-4">
+      {/* ── 6. ΕΚΚΡΕΜΕΙΣ ΠΛΗΡΩΜΕΣ + ΚΑΡΤΕΛΕΣ ── */}
+      {(payments.length > 0 || cardsSoon.length > 0) && (
+        <div className="bg-amber-950/40 border border-amber-700/40 rounded-2xl p-4">
           <div className="flex items-center justify-between mb-3">
-            <p className="text-white font-bold text-sm">💰 Εκκρεμείς Πληρωμές</p>
-            <span className="text-purple-400 font-bold text-sm">€{totalPending.toLocaleString('el-GR', { minimumFractionDigits: 2 })}</span>
+            <p className="text-amber-400 font-semibold text-xs uppercase tracking-wide">⏰ Επόμενες 7 ημέρες</p>
+            {payments.length > 0 && <span className="text-amber-400 font-bold text-sm">€{totalPending.toLocaleString('el-GR', { minimumFractionDigits: 2 })}</span>}
           </div>
-          <div className="space-y-1.5 max-h-48 overflow-y-auto">
+          <div className="space-y-1.5 max-h-64 overflow-y-auto">
+            {/* Καρτέλες */}
+            {cardsSoon.map(c => (
+              <div key={c.id} className="flex justify-between bg-amber-900/20 rounded-xl px-3 py-2">
+                <span className="text-slate-200 text-sm truncate">📅 {c.name}</span>
+                <span className="text-amber-400 text-xs shrink-0 ml-2">{format(parseISO(c.next_card_date), 'EEE d MMM', { locale: el })}</span>
+              </div>
+            ))}
+            {/* Πληρωμές */}
             {payments.map(p => {
               const overdue = p.due_date && isPast(parseISO(p.due_date)) && !isToday(parseISO(p.due_date))
               return (
                 <button key={p.id}
                   onClick={() => navigate(p.client_id ? `/clients?open=${p.client_id}` : '/clients')}
-                  className={`w-full flex items-center justify-between rounded-xl px-3 py-2 text-left transition-colors ${overdue ? 'bg-red-900/20 hover:bg-red-900/40' : 'bg-slate-700 hover:bg-slate-600'}`}>
+                  className={`w-full flex items-center justify-between rounded-xl px-3 py-2 text-left transition-colors ${overdue ? 'bg-red-900/20 hover:bg-red-900/40' : 'bg-amber-900/20 hover:bg-amber-900/40'}`}>
                   <div className="min-w-0">
                     <p className="text-white text-sm font-medium truncate">{p.client_name}</p>
                     {p.notes && <p className="text-slate-400 text-xs truncate">{p.notes}</p>}
