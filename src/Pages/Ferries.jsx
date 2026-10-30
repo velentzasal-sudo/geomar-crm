@@ -416,14 +416,38 @@ export default function Ferries() {
     if (!importRows.length) return
     setImporting(true)
     let inserted = 0, skipped = 0
+
+    // Fetch existing records to detect duplicates (departure + truck + route)
+    const { data: existing } = await supabase.from('ferries').select('departure,truck,route')
+    const existingSet = new Set(
+      (existing || []).map(r => `${r.departure}|${(r.truck||'').toUpperCase()}|${r.route}`)
+    )
+
     for (const row of importRows) {
       if (!row.departure || !row.route) { skipped++; continue }
+      const key = `${row.departure}|${(row.truck||'').toUpperCase()}|${row.route}`
+      if (existingSet.has(key)) { skipped++; continue }
       const { error } = await supabase.from('ferries').insert([row])
       if (error) skipped++
-      else inserted++
+      else { inserted++; existingSet.add(key) }
     }
     setImporting(false)
     setImportDone({ inserted, skipped })
+    loadAll()
+  }
+
+  async function handleDeleteMonth() {
+    if (!importRows.length) return
+    // Detect month range from import rows
+    const dates = importRows.map(r => r.departure).filter(Boolean).sort()
+    const monthStart = dates[0].substring(0, 7) + '-01'
+    const monthEnd   = dates[dates.length - 1].substring(0, 7) + '-31'
+    const label = dates[0].substring(0, 7) // e.g. "2026-10"
+    if (!window.confirm(`Διαγραφή ΟΛΩΝ των εγγραφών του ${label} από τη βάση;\nΘα ξαναμπούν με το Import.`)) return
+    setImporting(true)
+    await supabase.from('ferries').delete().gte('departure', monthStart).lte('departure', monthEnd)
+    setImporting(false)
+    setImportDone(null)
     loadAll()
   }
 
@@ -686,6 +710,62 @@ export default function Ferries() {
       )}
 
       </div>{/* end flex row */}
+
+      {/* Backdrop to close chip popup on outside click */}
+      {chipPopup && <div className="fixed inset-0 z-50" onClick={() => setChipPopup(null)} />}
+
+      {/* Chip popup — quick edit overlay */}
+      {chipPopup && (() => {
+        const b = bookings.find(x => x.id === chipPopup.bookingId)
+        if (!b) return null
+        return (
+          <div
+            style={{ position: 'fixed', top: chipPopup.y, left: chipPopup.x, zIndex: 60 }}
+            className="bg-slate-800 border border-slate-600 rounded-2xl shadow-2xl p-4 w-72"
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Close */}
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-white font-semibold text-sm">{b.route}</p>
+              <button onClick={() => setChipPopup(null)} className="text-slate-400 hover:text-white text-xl leading-none">×</button>
+            </div>
+            <div className="space-y-2 text-xs">
+              <div className="flex gap-2 items-center">
+                <span className="text-slate-400 w-20 shrink-0">Εταιρεία</span>
+                <span className="text-white font-medium">{b.company}</span>
+              </div>
+              <div className="flex gap-2 items-center">
+                <span className="text-slate-400 w-20 shrink-0">Φορτηγό</span>
+                <span className="text-white font-mono">{b.truck || '—'}</span>
+              </div>
+              <div className="flex gap-2 items-center">
+                <span className="text-slate-400 w-20 shrink-0">Αναχώρηση</span>
+                <span className="text-white">{b.departure ? format(parseISO(b.departure), 'd MMM yyyy', { locale: el }) : '—'}</span>
+              </div>
+              <div className="flex gap-2 items-center">
+                <span className="text-slate-400 w-20 shrink-0">Κόστος</span>
+                <span className="text-green-300 font-bold">{b.total_cost ? `${b.total_cost.toLocaleString('el-GR')}€` : '—'}</span>
+              </div>
+              {b.booking_ref && (
+                <div className="flex gap-2 items-center">
+                  <span className="text-slate-400 w-20 shrink-0">Ref</span>
+                  <span className="text-white">#{b.booking_ref}</span>
+                </div>
+              )}
+            </div>
+            <div className="flex gap-2 mt-4">
+              <button onClick={() => { openEdit(b); setChipPopup(null) }}
+                className="flex-1 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-medium transition-colors">
+                ✏️ Επεξεργασία
+              </button>
+              <button onClick={() => { handleDelete(b.id); setChipPopup(null) }}
+                className="px-3 py-2 bg-slate-700 hover:bg-red-900/60 text-slate-300 rounded-xl text-xs transition-colors">
+                🗑️
+              </button>
+            </div>
+          </div>
+        )
+      })()}
 
       {/* Modal κράτησης */}
       {modal && (
