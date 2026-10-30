@@ -974,10 +974,17 @@ export default function Ferries() {
                 {importDone ? 'Κλείσιμο' : 'Ακύρωση'}
               </button>
               {!importDone && (
-                <button onClick={handleImportConfirm} disabled={importing || importRows.length === 0}
-                  className="flex-1 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white py-2 rounded-xl text-sm font-medium transition-colors">
-                  {importing ? 'Εισαγωγή...' : `💾 Εισαγωγή ${importRows.length} εγγραφών`}
-                </button>
+                <>
+                  <button onClick={handleDeleteMonth} disabled={importing || importRows.length === 0}
+                    className="bg-red-900/60 hover:bg-red-800 disabled:opacity-50 text-red-300 px-4 py-2 rounded-xl text-sm transition-colors"
+                    title="Διαγραφή όλων των εγγραφών του μήνα πριν την εισαγωγή">
+                    🗑️ Εκκαθάριση μηνός
+                  </button>
+                  <button onClick={handleImportConfirm} disabled={importing || importRows.length === 0}
+                    className="flex-1 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white py-2 rounded-xl text-sm font-medium transition-colors">
+                    {importing ? 'Εισαγωγή...' : `💾 Εισαγωγή ${importRows.length} εγγραφών`}
+                  </button>
+                </>
               )}
             </div>
           </div>
