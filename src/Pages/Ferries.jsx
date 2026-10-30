@@ -7,7 +7,7 @@ import {
 } from 'date-fns'
 import { el } from 'date-fns/locale'
 
-const COMPANIES = ['Hellenic Sea Ferries', 'Blue Star']
+const COMPANIES = ['Hellenic Ferry Services', 'Blue Star']
 
 // Short 2-3 letter codes για calendar display
 const PORT_SHORT = {
@@ -55,7 +55,7 @@ function parseRouteField(raw) {
 
   let company = null
   const rest = parts.slice(2).join(' ').toLowerCase()
-  if (rest.includes('grimaldi')) company = 'Hellenic Sea Ferries'
+  if (rest.includes('grimaldi')) company = 'Hellenic Ferry Services'
   else if (rest.includes('attica') || rest.includes('attika')) company = 'Blue Star'
 
   // Normalize to ROUTES list
@@ -134,7 +134,7 @@ function normalizeCompany(raw) {
   if (!raw) return null
   const s = String(raw).trim().toLowerCase()
   if (s.includes('blue star') || s.includes('attica') || s.includes('bluestar')) return 'Blue Star'
-  if (s.includes('hellenic') || s.includes('grimaldi') || s.includes('hfs')) return 'Hellenic Sea Ferries'
+  if (s.includes('hellenic') || s.includes('grimaldi') || s.includes('hfs')) return 'Hellenic Ferry Services'
   // Return as-is (capitalized) if recognized company name
   if (raw.trim().length > 0) return raw.trim()
   return null
@@ -241,11 +241,11 @@ function getPricePerM(route, dateStr) {
 const EMPTY = {
   route: '', truck: '', meters: 16.5,
   price_per_m: '', total_cost: '',
-  company: 'Hellenic Sea Ferries', booking_ref: '', notes: ''
+  company: 'Hellenic Ferry Services', booking_ref: '', notes: ''
 }
 
 const COMPANY_COLORS = {
-  'Hellenic Sea Ferries': 'bg-orange-900/50 border-orange-600 text-orange-200',
+  'Hellenic Ferry Services': 'bg-orange-900/50 border-orange-600 text-orange-200',
   'Blue Star':            'bg-blue-900/60 border-blue-500 text-blue-200',
 }
 
@@ -343,7 +343,7 @@ export default function Ferries() {
       meters:      b.meters ?? 16.5,
       price_per_m: b.price_per_m ?? '',
       total_cost:  b.total_cost ?? '',
-      company:     b.company || 'Hellenic Sea Ferries',
+      company:     b.company || 'Hellenic Ferry Services',
       booking_ref: b.booking_ref || '',
       notes:       b.notes || '',
     })
@@ -473,7 +473,7 @@ export default function Ferries() {
     // Σύνολα ανά εταιρεία
     const summaryRows = [
       {},
-      { 'Δρομολόγιο': 'ΣΥΝΟΛΑ', 'Εταιρεία': 'Hellenic Sea Ferries', 'Σύνολο (€)': companyTotals['Hellenic Sea Ferries'] },
+      { 'Δρομολόγιο': 'ΣΥΝΟΛΑ', 'Εταιρεία': 'Hellenic Ferry Services', 'Σύνολο (€)': companyTotals['Hellenic Ferry Services'] },
       { 'Δρομολόγιο': '',        'Εταιρεία': 'Blue Star',               'Σύνολο (€)': companyTotals['Blue Star'] },
       { 'Δρομολόγιο': '',        'Εταιρεία': 'ΓΕΝΙΚΟ ΣΥΝΟΛΟ',           'Σύνολο (€)': monthTotal },
     ]
@@ -522,9 +522,9 @@ export default function Ferries() {
       {/* Σύνολα μήνα */}
       <div className="grid grid-cols-3 gap-3">
         <div className="bg-orange-900/30 border border-orange-600/50 rounded-2xl px-4 py-3">
-          <p className="text-orange-300 text-xs font-medium uppercase tracking-wide mb-1">Hellenic Sea Ferries</p>
-          <p className="text-white text-xl font-bold">{companyTotals['Hellenic Sea Ferries'].toLocaleString('el-GR', { minimumFractionDigits: 2 })} €</p>
-          <p className="text-orange-400 text-xs mt-0.5">{monthBookings.filter(b => b.company === 'Hellenic Sea Ferries').length} κρατήσεις</p>
+          <p className="text-orange-300 text-xs font-medium uppercase tracking-wide mb-1">Hellenic Ferry Services</p>
+          <p className="text-white text-xl font-bold">{companyTotals['Hellenic Ferry Services'].toLocaleString('el-GR', { minimumFractionDigits: 2 })} €</p>
+          <p className="text-orange-400 text-xs mt-0.5">{monthBookings.filter(b => b.company === 'Hellenic Ferry Services').length} κρατήσεις</p>
         </div>
         <div className="bg-blue-900/40 border border-blue-500/50 rounded-2xl px-4 py-3">
           <p className="text-blue-300 text-xs font-medium uppercase tracking-wide mb-1">Blue Star</p>
@@ -593,8 +593,13 @@ export default function Ferries() {
                 <p className="text-xs opacity-60">{b.departure ? format(parseISO(b.departure), 'MMM', { locale: el }) : ''}</p>
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-white font-semibold text-sm truncate">{b.route}</p>
-                <p className="text-xs opacity-70">{b.company} {b.truck && `· ${b.truck}`}</p>
+                <p className="text-white font-semibold text-sm">{b.route}</p>
+                <p className="text-xs opacity-70 font-mono">{b.truck || '—'}</p>
+              </div>
+              <div className="shrink-0">
+                <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${b.company === 'Blue Star' ? 'bg-blue-700/60 text-blue-200' : 'bg-orange-700/60 text-orange-200'}`}>
+                  {b.company === 'Blue Star' ? 'BS' : 'HFS'}
+                </span>
               </div>
               <div className="text-right shrink-0">
                 <p className="text-green-300 font-bold text-sm">{b.total_cost ? `${b.total_cost.toLocaleString('el-GR')}€` : '—'}</p>
@@ -646,8 +651,8 @@ export default function Ferries() {
                     <div key={b.id}
                       onClick={e => { e.stopPropagation(); const r = e.currentTarget.getBoundingClientRect(); setChipPopup({ bookingId: b.id, x: r.left, y: r.bottom + 4 }) }}
                       className={`text-xs px-1 py-0.5 rounded border mb-0.5 flex items-center gap-1 overflow-hidden cursor-pointer hover:brightness-125 ${COMPANY_COLORS[b.company] || 'bg-slate-700 border-slate-600 text-slate-300'}`}>
-                      <span className="font-bold truncate max-w-[3rem]">{b.truck || '–'}</span>
-                      <span className="opacity-70 truncate shrink-0">{shortRoute(b.route)}</span>
+                      <span className="font-bold shrink-0">{b.truck || '–'}</span>
+                      <span className="opacity-70 shrink-0">{shortRoute(b.route)}</span>
                     </div>
                   ))}
                   {dayBookings.length > 3 && (
