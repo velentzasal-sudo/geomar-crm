@@ -537,9 +537,9 @@ export default function Ferries() {
           <p className="text-slate-500 text-xs mt-0.5">{monthBookings.length} κρατήσεις</p>
         </div>
         <div className="bg-slate-800 border border-slate-600 rounded-2xl px-4 py-3">
-          <p className="text-slate-400 text-xs font-medium uppercase tracking-wide mb-1">Δρομολόγια</p>
-          <p className="text-white text-xl font-bold">{new Set(monthBookings.map(b => b.route).filter(Boolean)).size}</p>
-          <p className="text-slate-500 text-xs mt-0.5">μοναδικά</p>
+          <p className="text-slate-400 text-xs font-medium uppercase tracking-wide mb-1">Εισιτήρια</p>
+          <p className="text-white text-xl font-bold">{monthBookings.length}</p>
+          <p className="text-slate-500 text-xs mt-0.5">δρομολόγια μηνός</p>
         </div>
       </div>
 
