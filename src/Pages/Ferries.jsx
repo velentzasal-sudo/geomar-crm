@@ -651,8 +651,8 @@ export default function Ferries() {
                     <div key={b.id}
                       onClick={e => { e.stopPropagation(); const r = e.currentTarget.getBoundingClientRect(); setChipPopup({ bookingId: b.id, x: r.left, y: r.bottom + 4 }) }}
                       className={`text-xs px-1 py-0.5 rounded border mb-0.5 flex items-center gap-1 overflow-hidden cursor-pointer hover:brightness-125 ${COMPANY_COLORS[b.company] || 'bg-slate-700 border-slate-600 text-slate-300'}`}>
-                      <span className="font-bold shrink-0">{b.truck || '–'}</span>
-                      <span className="opacity-70 shrink-0">{shortRoute(b.route)}</span>
+                      <span className="font-bold shrink-0 font-mono tracking-tight">{b.truck || '–'}</span>
+                      <span className="opacity-70 truncate">{shortRoute(b.route)}</span>
                     </div>
                   ))}
                   {dayBookings.length > 3 && (
