@@ -520,7 +520,7 @@ export default function Ferries() {
       </div>
 
       {/* Σύνολα μήνα */}
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-4 gap-3">
         <div className="bg-orange-900/30 border border-orange-600/50 rounded-2xl px-4 py-3">
           <p className="text-orange-300 text-xs font-medium uppercase tracking-wide mb-1">Hellenic Ferry Services</p>
           <p className="text-white text-xl font-bold">{companyTotals['Hellenic Ferry Services'].toLocaleString('el-GR', { minimumFractionDigits: 2 })} €</p>
@@ -535,6 +535,11 @@ export default function Ferries() {
           <p className="text-slate-400 text-xs font-medium uppercase tracking-wide mb-1">Σύνολο {format(current, 'MMM', { locale: el })}</p>
           <p className="text-green-400 text-xl font-bold">{monthTotal.toLocaleString('el-GR', { minimumFractionDigits: 2 })} €</p>
           <p className="text-slate-500 text-xs mt-0.5">{monthBookings.length} κρατήσεις</p>
+        </div>
+        <div className="bg-slate-800 border border-slate-600 rounded-2xl px-4 py-3">
+          <p className="text-slate-400 text-xs font-medium uppercase tracking-wide mb-1">Δρομολόγια</p>
+          <p className="text-white text-xl font-bold">{new Set(monthBookings.map(b => b.route).filter(Boolean)).size}</p>
+          <p className="text-slate-500 text-xs mt-0.5">μοναδικά</p>
         </div>
       </div>
 
