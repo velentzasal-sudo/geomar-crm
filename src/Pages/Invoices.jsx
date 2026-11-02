@@ -519,7 +519,9 @@ export default function Invoices() {
       if (!map.has(k)) map.set(k, { label: r.month || k, rows: [] })
       map.get(k).rows.push(r)
     })
-    return Array.from(map.entries()).sort((a, b) => b[0].localeCompare(a[0]))
+    return Array.from(map.entries())
+      .sort((a, b) => b[0].localeCompare(a[0]))
+      .map(([, v]) => v)
   }, [filtered])
 
   const totals = useMemo(() => ({
