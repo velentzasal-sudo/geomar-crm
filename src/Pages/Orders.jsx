@@ -95,6 +95,7 @@ const STATUSES = ['Open', 'Ανατεθειμένη', 'Delivered']
 const PAL_TYPES = ['E', 'B', 'P', 'M', 'χύμα']
 
 const EMPTY = {
+  order_num: null,
   client:'', firm:'', from:'', to:'', recip:'',
   pal:'E', qty:'', ldm:'', wgt:'', tmp:'',
   pal2:'E', qty2:'',
@@ -173,6 +174,7 @@ function GroupedOrders({ orders, onEdit, onDelete, onCycleStatus, onWhatsApp, ST
                   return (
                     <div key={o.id} className="px-3 py-2.5 flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-3 hover:bg-slate-700/30 transition-colors">
                       <div className="flex items-center gap-2 min-w-0">
+                        {o.order_num && <span className="text-slate-500 text-xs font-mono shrink-0">#{o.order_num}</span>}
                         <button
                           onClick={() => onCycleStatus(o)}
                           className={`text-xs px-2 py-1 rounded-lg border shrink-0 transition-opacity hover:opacity-70 ${STATUS_COLORS[o.status] || 'bg-slate-700 text-slate-300 border-slate-600'}`}
@@ -360,7 +362,9 @@ export default function Orders() {
 
   function openNew() {
     setEditing(null)
-    setForm(EMPTY)
+    // Αυτόματος επόμενος αριθμός παραγγελίας
+    const maxNum = orders.reduce((m, o) => Math.max(m, o.order_num || 0), 0)
+    setForm({ ...EMPTY, order_num: maxNum + 1 })
     setErrors({})
     setShowModal(true)
   }
@@ -455,6 +459,7 @@ export default function Orders() {
       : null
     const payload = {
       ...rest,
+      order_num: form.order_num ? parseInt(form.order_num) : null,
       qty:   parseFloat(form.qty)   || 0,
       ldm:   parseFloat(form.ldm)   || 0,
       wgt:   parseFloat(form.wgt)   || 0,
@@ -821,6 +826,19 @@ export default function Orders() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
 
                 {/* Πελάτης */}
+
+                {/* Αρ. Παραγγελίας */}
+                <div className="col-span-2">
+                  <label className="block text-slate-400 text-xs mb-1">Αρ. Παραγγελίας</label>
+                  <input
+                    type="number"
+                    value={form.order_num || ''}
+                    onChange={e => setForm(f => ({ ...f, order_num: e.target.value }))}
+                    className="w-full bg-slate-700 border border-slate-600 text-white rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-blue-500 font-mono"
+                    placeholder="Αυτόματος"
+                  />
+                </div>
+
                 <div className="col-span-2">
                   <SearchableSelect
                     label={errors.client ? `Πελάτης · ${errors.client}` : 'Πελάτης *'}
