@@ -10,6 +10,7 @@ const links = [
   { to: '/calendar',  label: 'Ημερολόγιο',   icon: '📅' },
   { to: '/weekly',    label: 'Εβδ. Πλάνος',  icon: '📋' },
   { to: '/ferries',   label: 'Καράβια',       icon: '⛴️' },
+  { to: '/invoices',  label: 'Παραστατικά',   icon: '📄' },
 ]
 
 export default function Sidebar({ user, onNavigate }) {
