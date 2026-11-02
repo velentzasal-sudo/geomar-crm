@@ -1,4 +1,5 @@
 import { useEffect, useState, useMemo, useRef, useCallback } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 
 const MONTHS_ORDER = [
@@ -210,12 +211,110 @@ function StatsTab({ rows }) {
           </div>
         </div>
       )}
+
+      {/* YoY Σύγκριση */}
+      <YoYComparison rows={rows} />
     </div>
   )
 }
 
+function YoYComparison({ rows }) {
+  // Χτίζουμε δεδομένα ανά έτος+μήνα
+  const byYearMonth = useMemo(() => {
+    const map = {}
+    rows.forEach(r => {
+      if (!r.month_sort) return
+      const [year, mo] = r.month_sort.split('-')
+      if (!year || !mo) return
+      const moInt = parseInt(mo)
+      if (!map[year]) map[year] = {}
+      if (!map[year][moInt]) map[year][moInt] = { charge: 0, count: 0 }
+      map[year][moInt].charge += r.charge || 0
+      map[year][moInt].count++
+    })
+    return map
+  }, [rows])
+
+  const years = Object.keys(byYearMonth).sort().reverse()
+  if (years.length < 2) return null
+
+  const MONTH_LABELS = ['Ιαν', 'Φεβ', 'Μαρ', 'Απρ', 'Μαϊ', 'Ιουν', 'Ιουλ', 'Αυγ', 'Σεπ', 'Οκτ', 'Νοε', 'Δεκ']
+  const [yearA, yearB] = years // yearA = πιο πρόσφατο
+
+  const maxVal = Math.max(
+    ...Object.values(byYearMonth[yearA] || {}).map(v => v.charge),
+    ...Object.values(byYearMonth[yearB] || {}).map(v => v.charge),
+    1
+  )
+
+  return (
+    <div className="bg-slate-800 border border-slate-600 rounded-2xl overflow-hidden">
+      <div className="px-4 py-3 border-b border-slate-700 flex items-center gap-3">
+        <h3 className="text-white font-semibold text-sm">Σύγκριση Ετών</h3>
+        <div className="flex items-center gap-3 text-xs ml-auto">
+          <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-full bg-blue-500 inline-block"/> {yearA}</span>
+          <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-full bg-slate-500 inline-block"/> {yearB}</span>
+        </div>
+      </div>
+      <div className="p-4 space-y-2">
+        {Array.from({ length: 12 }, (_, i) => i + 1).map(mo => {
+          const vA = byYearMonth[yearA]?.[mo]
+          const vB = byYearMonth[yearB]?.[mo]
+          if (!vA && !vB) return null
+          const pctA = vA ? (vA.charge / maxVal) * 100 : 0
+          const pctB = vB ? (vB.charge / maxVal) * 100 : 0
+          const diff = vA && vB ? ((vA.charge - vB.charge) / vB.charge * 100) : null
+          return (
+            <div key={mo} className="flex items-center gap-2">
+              <span className="text-slate-400 text-xs w-8 shrink-0">{MONTH_LABELS[mo-1]}</span>
+              <div className="flex-1 space-y-0.5">
+                <div className="flex items-center gap-1">
+                  <div className="flex-1 bg-slate-700 rounded-full h-2.5 overflow-hidden">
+                    <div className="h-full bg-blue-500 rounded-full" style={{ width: `${pctA}%` }} />
+                  </div>
+                  <span className="text-white font-mono text-xs w-20 text-right shrink-0">{vA ? fmt(vA.charge) : '—'}</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <div className="flex-1 bg-slate-700 rounded-full h-2.5 overflow-hidden">
+                    <div className="h-full bg-slate-500 rounded-full" style={{ width: `${pctB}%` }} />
+                  </div>
+                  <span className="text-slate-400 font-mono text-xs w-20 text-right shrink-0">{vB ? fmt(vB.charge) : '—'}</span>
+                </div>
+              </div>
+              {diff !== null && (
+                <span className={`text-xs font-mono w-14 text-right shrink-0 ${diff >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                  {diff >= 0 ? '+' : ''}{diff.toFixed(1)}%
+                </span>
+              )}
+            </div>
+          )
+        }).filter(Boolean)}
+      </div>
+    </div>
+  )
+}
+
+// ── Export to Excel ───────────────────────────────────────────────
+async function exportToExcel(rows, docType) {
+  const XLSX = await import('https://cdn.jsdelivr.net/npm/xlsx@0.18.5/xlsx.mjs')
+  const data = [
+    ['Αρ.', 'Μήνας', 'Πελάτης', 'Πινακίδα', 'Χρέωση', 'Φορτωτικές', 'Διαφορά', 'Σημείωση', 'Παρ.'],
+    ...rows.map(r => [
+      r.doc_num, r.month, r.client, r.truck,
+      r.charge, r.freight,
+      (r.charge || 0) - (r.freight || 0),
+      r.note, r.order_num
+    ])
+  ]
+  const ws = XLSX.utils.aoa_to_sheet(data)
+  const wb = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(wb, ws, docType)
+  XLSX.writeFile(wb, `Παραστατικά_${docType}_${new Date().toISOString().slice(0,10)}.xlsx`)
+}
+
 // ── Main ──────────────────────────────────────────────────────────
 export default function Invoices() {
+  const [searchParams, setSearchParams] = useSearchParams()
   const [rows, setRows]           = useState([])
   const [loading, setLoading]     = useState(true)
   const [docType, setDocType]     = useState('ΤΠΥ')
@@ -251,10 +350,32 @@ export default function Invoices() {
       supabase.from('clients').select('name').order('name'),
       supabase.from('trucks').select('plate').order('plate'),
     ])
-    setRows(inv || [])
+    const invRows = inv || []
+    setRows(invRows)
     setClientOptions((clients || []).map(c => c.name).filter(Boolean))
     setTruckOptions((trucks || []).map(t => t.plate).filter(Boolean))
     setLoading(false)
+    // Auto-open από παραγγελία
+    if (searchParams.get('new_invoice') === '1') {
+      const orderNum = searchParams.get('order_num')
+      const client   = searchParams.get('client') || ''
+      const truck    = searchParams.get('truck')  || ''
+      const now = new Date()
+      const mIdx = now.getMonth()
+      const year = now.getFullYear()
+      const monthSort  = `${year}-${String(mIdx + 1).padStart(2, '0')}`
+      const monthLabel = `${MONTHS_ORDER[mIdx]} ${year}`
+      const maxDoc = invRows.filter(r => (r.type || 'ΤΠΥ') === 'ΤΠΥ').reduce((m, r) => Math.max(m, r.doc_num || 0), 0)
+      setForm({
+        doc_num: maxDoc + 1, month: monthLabel, month_sort: monthSort,
+        type: 'ΤΠΥ', client, truck,
+        charge: '', freight: '', note: '',
+        order_num: orderNum ? parseInt(orderNum) : '',
+      })
+      setEditRow(null)
+      setEditOpen(true)
+      setSearchParams({})
+    }
   }
 
   useEffect(() => { loadAll() }, [])
@@ -308,6 +429,33 @@ export default function Invoices() {
     freight: filtered.reduce((s, r) => s + (r.freight || 0), 0),
     count:   filtered.length,
   }), [filtered])
+
+  // ── Soft Delete (undo toast) ──────────────────────────────────
+  const [pendingDelete, setPendingDelete] = useState(null) // { id, row, timer }
+
+  async function handleDelete(id) {
+    const row = rows.find(r => r.id === id)
+    if (!row) return
+    // Αφαίρεσε αμέσως από UI
+    setRows(prev => prev.filter(r => r.id !== id))
+    // Timer 5 δευτ. → πραγματική διαγραφή
+    const timer = setTimeout(async () => {
+      await supabase.from('invoices').delete().eq('id', id)
+      setPendingDelete(null)
+    }, 5000)
+    setPendingDelete({ id, row, timer })
+  }
+
+  function undoDelete() {
+    if (!pendingDelete) return
+    clearTimeout(pendingDelete.timer)
+    setRows(prev => {
+      const next = [...prev, pendingDelete.row]
+      next.sort((a, b) => (b.month_sort || '').localeCompare(a.month_sort || '') || (a.doc_num || 0) - (b.doc_num || 0))
+      return next
+    })
+    setPendingDelete(null)
+  }
 
   // ── Import ────────────────────────────────────────────────────
   async function handleFileChange(e) {
@@ -450,11 +598,6 @@ export default function Invoices() {
     }
   }, [form, editRow, rows, docType])
 
-  async function handleDelete(id) {
-    if (!window.confirm('Διαγραφή εγγραφής;')) return
-    await supabase.from('invoices').delete().eq('id', id)
-    loadAll()
-  }
 
   const clearFilters = () => { setSelectedMonth(''); setSearchClient(''); setSearchTruck(''); setSearchDoc('') }
   const hasFilters   = selectedMonth || searchClient || searchTruck || searchDoc
@@ -466,17 +609,30 @@ export default function Invoices() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <h1 className="text-white text-2xl font-bold">📄 Παραστατικά</h1>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap justify-end">
+          <button
+            onClick={() => exportToExcel(filtered, docType)}
+            className="bg-slate-700 hover:bg-slate-600 text-white px-3 py-2 rounded-xl text-sm transition-colors"
+            title="Εξαγωγή σε Excel"
+          >📤 Excel</button>
           <button
             onClick={() => { setImportOpen(true); setImportRows([]); setImportDone(null) }}
-            className="bg-slate-700 hover:bg-slate-600 text-white px-4 py-2 rounded-xl text-sm transition-colors"
-          >📥 Import Excel</button>
+            className="bg-slate-700 hover:bg-slate-600 text-white px-3 py-2 rounded-xl text-sm transition-colors"
+          >📥 Import</button>
           <button
             onClick={openAdd}
             className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-xl text-sm font-semibold transition-colors"
           >+ Νέο</button>
         </div>
       </div>
+
+      {/* Undo toast */}
+      {pendingDelete && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-slate-700 border border-slate-500 rounded-2xl px-5 py-3 flex items-center gap-4 shadow-xl">
+          <span className="text-white text-sm">🗑️ Διαγράφηκε #{pendingDelete.row.doc_num}</span>
+          <button onClick={undoDelete} className="bg-blue-600 hover:bg-blue-500 text-white text-sm px-3 py-1 rounded-xl font-semibold transition-colors">↩ Αναίρεση</button>
+        </div>
+      )}
 
       {/* ΤΠΥ / INV + tabs σε μία γραμμή */}
       <div className="flex items-center gap-3 flex-wrap">

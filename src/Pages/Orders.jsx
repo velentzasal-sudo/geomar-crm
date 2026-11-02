@@ -122,7 +122,7 @@ function validate(form) {
 }
 
 // ── Grouped by client accordion ──────────────────────────────
-function GroupedOrders({ orders, onEdit, onDelete, onCycleStatus, onWhatsApp, STATUS_COLORS, TLDM }) {
+function GroupedOrders({ orders, onEdit, onDelete, onCycleStatus, onWhatsApp, onCreateInvoice, invoiceCounts, STATUS_COLORS, TLDM }) {
   const [openClients, setOpenClients] = useState({})
 
   // Ομαδοποίηση ανά πελάτη, διατηρώντας σειρά (πρώτα ο πελάτης που εμφανίστηκε πιο πρόσφατα)
@@ -189,6 +189,9 @@ function GroupedOrders({ orders, onEdit, onDelete, onCycleStatus, onWhatsApp, ST
                         </div>
                         <div className="flex gap-1 shrink-0 sm:hidden">
                           {o.truck && <button onClick={() => onWhatsApp(o)} className="p-1.5 rounded-lg hover:bg-slate-700 text-slate-400 hover:text-green-400 text-sm">📲</button>}
+                          <button onClick={() => onCreateInvoice(o)} className="p-1.5 rounded-lg hover:bg-slate-700 text-slate-400 hover:text-blue-400 text-sm relative" title="Νέο παραστατικό">
+                            📄{invoiceCounts[o.order_num] > 0 && <span className="absolute -top-1 -right-1 bg-blue-500 text-white text-[9px] rounded-full w-4 h-4 flex items-center justify-center font-bold">{invoiceCounts[o.order_num]}</span>}
+                          </button>
                           <button onClick={() => onEdit(o)} className="p-1.5 rounded-lg hover:bg-slate-700 text-slate-400 hover:text-white text-sm">✏️</button>
                           <button onClick={() => onDelete(o.id)} className="p-1.5 rounded-lg hover:bg-red-900/40 text-slate-400 hover:text-red-400 text-sm">🗑️</button>
                         </div>
@@ -202,6 +205,9 @@ function GroupedOrders({ orders, onEdit, onDelete, onCycleStatus, onWhatsApp, ST
                       </div>
                       <div className="hidden sm:flex gap-1 shrink-0">
                         {o.truck && <button onClick={() => onWhatsApp(o)} className="p-1.5 rounded-lg hover:bg-slate-700 text-slate-400 hover:text-green-400 text-sm">📲</button>}
+                        <button onClick={() => onCreateInvoice(o)} className="p-1.5 rounded-lg hover:bg-slate-700 text-slate-400 hover:text-blue-400 text-sm relative" title="Νέο παραστατικό">
+                          📄{invoiceCounts[o.order_num] > 0 && <span className="absolute -top-1 -right-1 bg-blue-500 text-white text-[9px] rounded-full w-4 h-4 flex items-center justify-center font-bold">{invoiceCounts[o.order_num]}</span>}
+                        </button>
                         <button onClick={() => onEdit(o)} className="p-1.5 rounded-lg hover:bg-slate-700 text-slate-400 hover:text-white text-sm">✏️</button>
                         <button onClick={() => onDelete(o.id)} className="p-1.5 rounded-lg hover:bg-red-900/40 text-slate-400 hover:text-red-400 text-sm">🗑️</button>
                       </div>
@@ -224,6 +230,7 @@ export default function Orders() {
   const [firms, setFirms] = useState([])
   const [clients, setClients] = useState([])
   const [loading, setLoading] = useState(true)
+  const [invoiceCounts, setInvoiceCounts] = useState({}) // order_num → count
   const [showModal, setShowModal] = useState(false)
   const [editing, setEditing] = useState(null)
   const [form, setForm] = useState(EMPTY)
@@ -252,6 +259,17 @@ export default function Orders() {
     setClients(c || [])
     setTrucks(t || [])
     loadOrders()
+    loadInvoiceCounts()
+  }
+
+  async function loadInvoiceCounts() {
+    const { data } = await supabase.from('invoices').select('order_num').not('order_num', 'is', null)
+    if (!data) return
+    const counts = {}
+    data.forEach(r => {
+      if (r.order_num) counts[r.order_num] = (counts[r.order_num] || 0) + 1
+    })
+    setInvoiceCounts(counts)
   }
 
   async function loadOrders() {
@@ -351,6 +369,17 @@ export default function Orders() {
       .eq('recurring_id', o.recurring_id)
 
     await loadOrders()
+  }
+
+  function createInvoiceFromOrder(o) {
+    // Ανοίγει Invoices με pre-fill μέσω URL params
+    const params = new URLSearchParams({
+      new_invoice: '1',
+      order_num: o.order_num || '',
+      client: o.client || '',
+      truck: o.truck || '',
+    })
+    window.location.href = `/invoices?${params.toString()}`
   }
 
   function calcLdm(pal, qty) {
@@ -812,6 +841,8 @@ export default function Orders() {
           onDelete={handleDelete}
           onCycleStatus={cycleStatus}
           onWhatsApp={openWhatsApp}
+          onCreateInvoice={createInvoiceFromOrder}
+          invoiceCounts={invoiceCounts}
           STATUS_COLORS={STATUS_COLORS}
           TLDM={TLDM}
         />
