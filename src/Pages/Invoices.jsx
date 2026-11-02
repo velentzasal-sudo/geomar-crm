@@ -264,6 +264,7 @@ export default function Invoices() {
   const [searchClient, setSearchClient]     = useState('')
   const [searchTruck, setSearchTruck]       = useState('')
   const [activeTab, setActiveTab]           = useState('list') // 'list' | 'stats'
+  const [docType, setDocType]               = useState('ΤΠΥ') // 'ΤΠΥ' | 'INV'
 
   // Λίστες για autocomplete
   const [clientOptions, setClientOptions] = useState([])
@@ -303,15 +304,16 @@ export default function Invoices() {
     return Array.from(seen.entries()).sort((a, b) => b[0].localeCompare(a[0]))
   }, [rows])
 
-  // Φιλτραρισμένες εγγραφές
+  // Φιλτραρισμένες εγγραφές (ανά τύπο + φίλτρα)
   const filtered = useMemo(() => {
     return rows.filter(r => {
+      if ((r.type || 'ΤΠΥ') !== docType) return false
       if (selectedMonth && r.month_sort !== selectedMonth) return false
       if (searchClient && !(r.client || '').toLowerCase().includes(searchClient.toLowerCase())) return false
       if (searchTruck && !(r.truck || '').toLowerCase().includes(searchTruck.toLowerCase())) return false
       return true
     })
-  }, [rows, selectedMonth, searchClient, searchTruck])
+  }, [rows, selectedMonth, searchClient, searchTruck, docType])
 
   // Σύνολα τρέχουσας προβολής
   const totals = useMemo(() => ({
@@ -340,6 +342,10 @@ export default function Invoices() {
       monthSort = `${monthMatch[2]}-${String(mIdx + 1).padStart(2, '0')}`
     }
 
+    // Βρες τύπο από όνομα φύλλου
+    const sheetUpper = sheetName.toUpperCase()
+    const detectedType = sheetUpper.includes('INV') ? 'INV' : 'ΤΠΥ'
+
     const parsed = []
     for (const row of data) {
       if (!row[0] || typeof row[0] !== 'number') continue
@@ -349,6 +355,7 @@ export default function Invoices() {
         doc_num:    docNum,
         month,
         month_sort: monthSort,
+        type:       detectedType,
         client:     row[1] ? String(row[1]).trim() : null,
         truck:      row[2] ? String(row[2]).trim() : null,
         charge:     typeof row[3] === 'number' ? row[3] : null,
@@ -405,6 +412,7 @@ export default function Invoices() {
       doc_num:    nextDoc,
       month:      monthLabel,
       month_sort: monthSort,
+      type:       docType,
       client:     '',
       truck:      '',
       charge:     '',
@@ -427,6 +435,7 @@ export default function Invoices() {
       doc_num:    parseInt(form.doc_num) || 0,
       month:      form.month,
       month_sort: form.month_sort,
+      type:       form.type || 'ΤΠΥ',
       client:     form.client || null,
       truck:      form.truck || null,
       charge:     form.charge !== '' && form.charge != null ? parseFloat(form.charge) : null,
@@ -493,13 +502,26 @@ export default function Invoices() {
         </div>
       </div>
 
-      {/* Tabs */}
+      {/* ΤΠΥ / INV switcher */}
       <div className="flex gap-1 bg-slate-800/60 rounded-xl p-1 w-fit">
+        {['ΤΠΥ', 'INV'].map(t => (
+          <button
+            key={t}
+            onClick={() => { setDocType(t); setSelectedMonth(''); setSearchClient(''); setSearchTruck('') }}
+            className={`px-5 py-2 rounded-lg text-sm font-bold transition-colors ${
+              docType === t ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'
+            }`}
+          >{t}</button>
+        ))}
+      </div>
+
+      {/* Tabs Παραστατικά / Στατιστικά */}
+      <div className="flex gap-1 bg-slate-800/40 rounded-xl p-1 w-fit">
         {[['list', '📋 Παραστατικά'], ['stats', '📊 Στατιστικά']].map(([id, label]) => (
           <button
             key={id}
             onClick={() => setActiveTab(id)}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+            className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${
               activeTab === id ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'
             }`}
           >{label}</button>
@@ -507,7 +529,7 @@ export default function Invoices() {
       </div>
 
       {activeTab === 'stats' ? (
-        <StatsTab rows={rows} />
+        <StatsTab rows={rows.filter(r => (r.type || 'ΤΠΥ') === docType)} />
       ) : (
         <>
           {/* Φίλτρα */}
@@ -687,6 +709,23 @@ export default function Invoices() {
             </div>
 
             <div className="grid grid-cols-2 gap-3">
+              {/* Τύπος */}
+              <div>
+                <label className="block text-slate-400 text-xs mb-1">Τύπος</label>
+                <div className="flex gap-1">
+                  {['ΤΠΥ', 'INV'].map(t => (
+                    <button
+                      key={t}
+                      type="button"
+                      onClick={() => setForm(f => ({ ...f, type: t }))}
+                      className={`flex-1 py-2 rounded-xl text-sm font-bold transition-colors ${
+                        (form.type || 'ΤΠΥ') === t ? 'bg-indigo-600 text-white' : 'bg-slate-700 text-slate-400 hover:text-white'
+                      }`}
+                    >{t}</button>
+                  ))}
+                </div>
+              </div>
+
               {/* Αρ. Παραστατικού */}
               <div>
                 <label className="block text-slate-400 text-xs mb-1">Αρ. Παραστατικού</label>
