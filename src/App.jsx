@@ -12,6 +12,7 @@ import Firms from './Pages/Firms'
 import Calendar from './Pages/Calendar'
 import Weekly from './Pages/Weekly'
 import Ferries from './Pages/Ferries'
+import Invoices from './Pages/Invoices'
 
 export default function App() {
   const [session, setSession] = useState(undefined)
@@ -44,6 +45,7 @@ export default function App() {
           <Route path="calendar" element={<ErrorBoundary><Calendar /></ErrorBoundary>} />
           <Route path="weekly"   element={<ErrorBoundary><Weekly /></ErrorBoundary>} />
           <Route path="ferries"  element={<ErrorBoundary><Ferries /></ErrorBoundary>} />
+          <Route path="invoices" element={<ErrorBoundary><Invoices /></ErrorBoundary>} />
 <Route path="*"             element={<Navigate to="/" replace />} />
         </Route>
       </Routes>
