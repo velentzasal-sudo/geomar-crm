@@ -312,6 +312,104 @@ async function exportToExcel(rows, docType) {
   XLSX.writeFile(wb, `Παραστατικά_${docType}_${new Date().toISOString().slice(0,10)}.xlsx`)
 }
 
+// ── Collapsible Invoice List ───────────────────────────────────────
+function CollapsibleInvoiceList({ grouped, openEdit, handleDelete, fmt, fmtSign }) {
+  const [collapsed, setCollapsed] = useState({})
+
+  function toggle(label) {
+    setCollapsed(prev => ({ ...prev, [label]: !prev[label] }))
+  }
+
+  return (
+    <div className="space-y-3">
+      {grouped.map(group => {
+        const isCollapsed = collapsed[group.label]
+        const gCharge  = group.rows.reduce((s, r) => s + (r.charge  || 0), 0)
+        const gFreight = group.rows.reduce((s, r) => s + (r.freight || 0), 0)
+        const gDiff    = gCharge - gFreight
+        const hasOrder = group.rows.some(r => r.order_num)
+
+        return (
+          <div key={group.label} className="bg-slate-800/50 border border-slate-700 rounded-xl overflow-hidden">
+            {/* Month header — click to toggle */}
+            <button
+              onClick={() => toggle(group.label)}
+              className="w-full flex items-center justify-between px-4 py-2.5 hover:bg-slate-700/50 transition-colors"
+            >
+              <div className="flex items-center gap-2">
+                <span className={`text-sm transition-transform duration-200 ${isCollapsed ? '-rotate-90' : ''}`}>▾</span>
+                <span className="text-slate-200 font-semibold text-sm">{group.label}</span>
+                <span className="text-slate-500 text-xs">({group.rows.length})</span>
+              </div>
+              <div className="flex gap-4 text-xs font-mono">
+                <span className="text-white">{fmt(gCharge)}</span>
+                <span className="text-blue-300">{fmt(gFreight)}</span>
+                <span className={gDiff >= 0 ? 'text-green-400' : 'text-red-400'}>{fmtSign(gDiff)}</span>
+              </div>
+            </button>
+
+            {/* Rows — hidden when collapsed */}
+            {!isCollapsed && (
+              <div className="overflow-x-auto border-t border-slate-700">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-slate-800 text-slate-400 text-xs uppercase tracking-wide">
+                      <th className="px-3 py-2 text-left border-r border-slate-700 w-16">Αρ.</th>
+                      <th className="px-3 py-2 text-left border-r border-slate-700">Πελάτης</th>
+                      <th className="px-3 py-2 text-left border-r border-slate-700 w-24">Πινακίδα</th>
+                      <th className="px-3 py-2 text-right border-r border-slate-700 w-28">Χρέωση</th>
+                      <th className="px-3 py-2 text-right border-r border-slate-700 w-28">Φορτωτικές</th>
+                      <th className="px-3 py-2 text-right border-r border-slate-700 w-24">Διαφορά</th>
+                      {hasOrder && (
+                        <th className="px-3 py-2 text-left border-r border-slate-700 w-16">Παρ.</th>
+                      )}
+                      <th className="px-3 py-2 w-8"></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {group.rows.map((r, i) => {
+                      const diff = (r.charge || 0) - (r.freight || 0)
+                      const isLoss = r.charge != null && r.freight != null && diff < 0
+                      return (
+                        <tr
+                          key={r.id}
+                          onClick={() => openEdit(r)}
+                          className={`border-t border-slate-700/60 cursor-pointer transition-colors hover:bg-blue-900/20
+                            ${isLoss ? 'bg-red-900/10' : i % 2 === 0 ? 'bg-slate-800/30' : 'bg-slate-800/70'}`}
+                        >
+                          <td className="px-3 py-2 border-r border-slate-700/50 font-mono text-slate-300 text-xs">{r.doc_num}</td>
+                          <td className="px-3 py-2 border-r border-slate-700/50 text-white font-medium">{r.client || '—'}</td>
+                          <td className="px-3 py-2 border-r border-slate-700/50 font-mono text-slate-300 text-xs">{r.truck || '—'}</td>
+                          <td className="px-3 py-2 border-r border-slate-700/50 text-right font-mono text-white">{fmt(r.charge)}</td>
+                          <td className="px-3 py-2 border-r border-slate-700/50 text-right font-mono text-blue-300">{fmt(r.freight)}</td>
+                          <td className={`px-3 py-2 border-r border-slate-700/50 text-right font-mono text-xs ${diff < 0 ? 'text-red-400' : 'text-green-400'}`}>
+                            {r.charge != null && r.freight != null ? fmtSign(diff) : '—'}
+                          </td>
+                          {hasOrder && (
+                            <td className="px-3 py-2 border-r border-slate-700/50 font-mono text-slate-400 text-xs">
+                              {r.order_num ? `#${r.order_num}` : ''}
+                            </td>
+                          )}
+                          <td className="px-3 py-2 text-center">
+                            <button
+                              onClick={e => { e.stopPropagation(); handleDelete(r.id) }}
+                              className="text-slate-600 hover:text-red-400 text-xs transition-colors"
+                            >✕</button>
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 // ── Main ──────────────────────────────────────────────────────────
 export default function Invoices() {
   const [searchParams, setSearchParams] = useSearchParams()
@@ -695,75 +793,13 @@ export default function Invoices() {
             <p className="text-slate-500 text-center py-12">Δεν βρέθηκαν εγγραφές</p>
           ) : (
             <div className="space-y-3">
-              {grouped.map(([sort, group]) => {
-                const gCharge  = group.rows.reduce((s, r) => s + (r.charge  || 0), 0)
-                const gFreight = group.rows.reduce((s, r) => s + (r.freight || 0), 0)
-                const gDiff    = gCharge - gFreight
-                return (
-                  <div key={sort} className="rounded-xl overflow-hidden border border-slate-600">
-                    {/* Month header */}
-                    <div className="bg-slate-700/80 px-4 py-2 flex items-center justify-between">
-                      <span className="text-white font-semibold text-sm">{group.label}</span>
-                      <div className="flex gap-4 text-xs font-mono">
-                        <span className="text-slate-300">{fmt(gCharge)}</span>
-                        <span className="text-blue-300">{fmt(gFreight)}</span>
-                        <span className={gDiff >= 0 ? 'text-green-400' : 'text-red-400'}>{fmtSign(gDiff)}</span>
-                        <span className="text-slate-500">{group.rows.length} τμχ</span>
-                      </div>
-                    </div>
-                    <table className="w-full text-sm border-collapse">
-                      <thead>
-                        <tr className="bg-slate-800 text-slate-400 text-xs uppercase tracking-wide">
-                          <th className="px-3 py-2 text-left border-r border-slate-700 w-16">Αρ.</th>
-                          <th className="px-3 py-2 text-left border-r border-slate-700">Πελάτης</th>
-                          <th className="px-3 py-2 text-left border-r border-slate-700 w-24">Πινακίδα</th>
-                          <th className="px-3 py-2 text-right border-r border-slate-700 w-28">Χρέωση</th>
-                          <th className="px-3 py-2 text-right border-r border-slate-700 w-28">Φορτωτικές</th>
-                          <th className="px-3 py-2 text-right border-r border-slate-700 w-24">Διαφορά</th>
-                          {group.rows.some(r => r.order_num) && (
-                            <th className="px-3 py-2 text-left border-r border-slate-700 w-16">Παρ.</th>
-                          )}
-                          <th className="px-3 py-2 w-8"></th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {group.rows.map((r, i) => {
-                          const diff = (r.charge || 0) - (r.freight || 0)
-                          const isLoss = r.charge != null && r.freight != null && diff < 0
-                          return (
-                            <tr
-                              key={r.id}
-                              onClick={() => openEdit(r)}
-                              className={`border-t border-slate-700/60 cursor-pointer transition-colors hover:bg-blue-900/20
-                                ${isLoss ? 'bg-red-900/10' : i % 2 === 0 ? 'bg-slate-800/30' : 'bg-slate-800/70'}`}
-                            >
-                              <td className="px-3 py-2 border-r border-slate-700/50 font-mono text-slate-300 text-xs">{r.doc_num}</td>
-                              <td className="px-3 py-2 border-r border-slate-700/50 text-white font-medium">{r.client || '—'}</td>
-                              <td className="px-3 py-2 border-r border-slate-700/50 font-mono text-slate-300 text-xs">{r.truck || '—'}</td>
-                              <td className="px-3 py-2 border-r border-slate-700/50 text-right font-mono text-white">{fmt(r.charge)}</td>
-                              <td className="px-3 py-2 border-r border-slate-700/50 text-right font-mono text-blue-300">{fmt(r.freight)}</td>
-                              <td className={`px-3 py-2 border-r border-slate-700/50 text-right font-mono text-xs ${diff < 0 ? 'text-red-400' : 'text-green-400'}`}>
-                                {r.charge != null && r.freight != null ? fmtSign(diff) : '—'}
-                              </td>
-                              {group.rows.some(rr => rr.order_num) && (
-                                <td className="px-3 py-2 border-r border-slate-700/50 font-mono text-slate-400 text-xs">
-                                  {r.order_num ? `#${r.order_num}` : ''}
-                                </td>
-                              )}
-                              <td className="px-3 py-2 text-center">
-                                <button
-                                  onClick={e => { e.stopPropagation(); handleDelete(r.id) }}
-                                  className="text-slate-600 hover:text-red-400 text-xs transition-colors"
-                                >✕</button>
-                              </td>
-                            </tr>
-                          )
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                )
-              })}
+              <CollapsibleInvoiceList
+                grouped={grouped}
+                openEdit={openEdit}
+                handleDelete={handleDelete}
+                fmt={fmt}
+                fmtSign={fmtSign}
+              />
 
               {/* Grand total */}
               {grouped.length > 1 && (
