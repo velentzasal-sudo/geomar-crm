@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo, useRef } from 'react'
+import { useEffect, useState, useMemo, useRef, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 
 const MONTHS_ORDER = [
@@ -8,18 +8,22 @@ const MONTHS_ORDER = [
 ]
 
 function fmt(n) {
-  if (n == null) return ''
+  if (n == null || n === '') return '—'
   return Number(n).toLocaleString('el-GR', { minimumFractionDigits: 2 })
 }
+function fmtSign(n) {
+  if (n == null) return '—'
+  const v = Number(n)
+  return (v >= 0 ? '+' : '') + v.toLocaleString('el-GR', { minimumFractionDigits: 2 })
+}
 
-// ── Autocomplete component ────────────────────────────────────────
-function Autocomplete({ value, onChange, options, placeholder, className }) {
+// ── Autocomplete ──────────────────────────────────────────────────
+function Autocomplete({ value, onChange, options, placeholder, className, inputRef }) {
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState(value || '')
   const ref = useRef(null)
 
   useEffect(() => { setQuery(value || '') }, [value])
-
   useEffect(() => {
     function handle(e) {
       if (ref.current && !ref.current.contains(e.target)) setOpen(false)
@@ -36,6 +40,7 @@ function Autocomplete({ value, onChange, options, placeholder, className }) {
   return (
     <div ref={ref} className="relative">
       <input
+        ref={inputRef}
         type="text"
         value={query}
         placeholder={placeholder}
@@ -51,9 +56,7 @@ function Autocomplete({ value, onChange, options, placeholder, className }) {
               key={opt}
               onMouseDown={e => { e.preventDefault(); onChange(opt); setQuery(opt); setOpen(false) }}
               className="px-3 py-2 text-sm text-white hover:bg-blue-600 cursor-pointer"
-            >
-              {opt}
-            </div>
+            >{opt}</div>
           ))}
         </div>
       )}
@@ -61,7 +64,7 @@ function Autocomplete({ value, onChange, options, placeholder, className }) {
   )
 }
 
-// ── Stats tab ─────────────────────────────────────────────────────
+// ── Stats ─────────────────────────────────────────────────────────
 function StatsTab({ rows }) {
   const [statMonth, setStatMonth] = useState('')
 
@@ -71,9 +74,9 @@ function StatsTab({ rows }) {
     return Array.from(seen.entries()).sort((a, b) => b[0].localeCompare(a[0]))
   }, [rows])
 
-  const data = useMemo(() => {
-    return statMonth ? rows.filter(r => r.month_sort === statMonth) : rows
-  }, [rows, statMonth])
+  const data = useMemo(() =>
+    statMonth ? rows.filter(r => r.month_sort === statMonth) : rows
+  , [rows, statMonth])
 
   const totals = useMemo(() => ({
     charge:  data.reduce((s, r) => s + (r.charge  || 0), 0),
@@ -84,7 +87,6 @@ function StatsTab({ rows }) {
   const diff = totals.charge - totals.freight
   const pct  = totals.charge ? ((diff / totals.charge) * 100).toFixed(1) : 0
 
-  // ανά πελάτη
   const byClient = useMemo(() => {
     const map = {}
     data.forEach(r => {
@@ -92,12 +94,11 @@ function StatsTab({ rows }) {
       if (!map[k]) map[k] = { charge: 0, freight: 0, count: 0 }
       map[k].charge  += r.charge  || 0
       map[k].freight += r.freight || 0
-      map[k].count   += 1
+      map[k].count++
     })
     return Object.entries(map).sort((a, b) => b[1].charge - a[1].charge)
   }, [data])
 
-  // ανά φορτηγό
   const byTruck = useMemo(() => {
     const map = {}
     data.forEach(r => {
@@ -105,21 +106,19 @@ function StatsTab({ rows }) {
       if (!map[k]) map[k] = { charge: 0, freight: 0, count: 0 }
       map[k].charge  += r.charge  || 0
       map[k].freight += r.freight || 0
-      map[k].count   += 1
+      map[k].count++
     })
     return Object.entries(map).sort((a, b) => b[1].charge - a[1].charge)
   }, [data])
 
-  // ανά μήνα
   const byMonth = useMemo(() => {
     const map = {}
     rows.forEach(r => {
       const k = r.month_sort || '—'
-      const label = r.month || k
-      if (!map[k]) map[k] = { label, charge: 0, freight: 0, count: 0 }
+      if (!map[k]) map[k] = { label: r.month || k, charge: 0, freight: 0, count: 0 }
       map[k].charge  += r.charge  || 0
       map[k].freight += r.freight || 0
-      map[k].count   += 1
+      map[k].count++
     })
     return Object.entries(map).sort((a, b) => b[0].localeCompare(a[0]))
   }, [rows])
@@ -128,7 +127,6 @@ function StatsTab({ rows }) {
 
   return (
     <div className="space-y-5">
-      {/* Φίλτρο μήνα */}
       <div className="flex items-center gap-3">
         <select
           value={statMonth}
@@ -136,98 +134,61 @@ function StatsTab({ rows }) {
           className="bg-slate-700 border border-slate-600 text-white rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-blue-500"
         >
           <option value="">Όλοι οι μήνες</option>
-          {months.map(([sort, label]) => (
-            <option key={sort} value={sort}>{label}</option>
-          ))}
+          {months.map(([sort, label]) => <option key={sort} value={sort}>{label}</option>)}
         </select>
         <span className="text-slate-500 text-sm">{data.length} εγγραφές</span>
       </div>
 
-      {/* Κάρτες συνόλων */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <div className="bg-slate-800 border border-slate-600 rounded-2xl px-4 py-3">
-          <p className="text-slate-400 text-xs font-medium uppercase tracking-wide mb-1">Χρέωση</p>
-          <p className="text-white text-xl font-bold font-mono">{fmt(totals.charge)}</p>
-          <p className="text-slate-500 text-xs mt-0.5">ευρώ</p>
-        </div>
-        <div className="bg-slate-800 border border-slate-600 rounded-2xl px-4 py-3">
-          <p className="text-slate-400 text-xs font-medium uppercase tracking-wide mb-1">Φορτωτικές</p>
-          <p className="text-blue-300 text-xl font-bold font-mono">{fmt(totals.freight)}</p>
-          <p className="text-slate-500 text-xs mt-0.5">ευρώ</p>
-        </div>
-        <div className="bg-slate-800 border border-slate-600 rounded-2xl px-4 py-3">
-          <p className="text-slate-400 text-xs font-medium uppercase tracking-wide mb-1">Διαφορά</p>
-          <p className={`text-xl font-bold font-mono ${diff >= 0 ? 'text-green-400' : 'text-red-400'}`}>{fmt(diff)}</p>
-          <p className="text-slate-500 text-xs mt-0.5">{pct}% margin</p>
-        </div>
-        <div className="bg-slate-800 border border-slate-600 rounded-2xl px-4 py-3">
-          <p className="text-slate-400 text-xs font-medium uppercase tracking-wide mb-1">Παραστατικά</p>
-          <p className="text-white text-xl font-bold">{totals.count}</p>
-          <p className="text-slate-500 text-xs mt-0.5">εγγραφές</p>
-        </div>
+        {[
+          { label: 'Χρέωση', value: fmt(totals.charge), color: 'text-white', sub: 'ευρώ' },
+          { label: 'Φορτωτικές', value: fmt(totals.freight), color: 'text-blue-300', sub: 'ευρώ' },
+          { label: 'Διαφορά', value: fmtSign(diff), color: diff >= 0 ? 'text-green-400' : 'text-red-400', sub: `${pct}% margin` },
+          { label: 'Παραστατικά', value: totals.count, color: 'text-white', sub: 'εγγραφές' },
+        ].map(c => (
+          <div key={c.label} className="bg-slate-800 border border-slate-600 rounded-2xl px-4 py-3">
+            <p className="text-slate-400 text-xs font-medium uppercase tracking-wide mb-1">{c.label}</p>
+            <p className={`text-xl font-bold font-mono ${c.color}`}>{c.value}</p>
+            <p className="text-slate-500 text-xs mt-0.5">{c.sub}</p>
+          </div>
+        ))}
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {/* Ανά πελάτη */}
-        <div className="bg-slate-800 border border-slate-600 rounded-2xl overflow-hidden">
-          <div className="px-4 py-3 border-b border-slate-700">
-            <h3 className="text-white font-semibold text-sm">Ανά Πελάτη</h3>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="text-slate-400 border-b border-slate-700">
-                  <th className="px-3 py-2 text-left">Πελάτης</th>
-                  <th className="px-3 py-2 text-right">Χρέωση</th>
-                  <th className="px-3 py-2 text-right">Φορτ/κές</th>
-                  <th className="px-3 py-2 text-right w-10">Τμχ</th>
-                </tr>
-              </thead>
-              <tbody>
-                {byClient.map(([name, v]) => (
-                  <tr key={name} className="border-t border-slate-700/50 hover:bg-slate-700/30">
-                    <td className="px-3 py-1.5 text-white font-medium truncate max-w-[130px]">{name}</td>
-                    <td className="px-3 py-1.5 text-right font-mono text-white">{fmt(v.charge)}</td>
-                    <td className="px-3 py-1.5 text-right font-mono text-blue-300">{fmt(v.freight)}</td>
-                    <td className="px-3 py-1.5 text-right text-slate-400">{v.count}</td>
+        {[
+          { title: 'Ανά Πελάτη', data: byClient, keyLabel: 'Πελάτης', mono: false },
+          { title: 'Ανά Φορτηγό', data: byTruck, keyLabel: 'Πινακίδα', mono: true },
+        ].map(({ title, data: tdata, keyLabel, mono }) => (
+          <div key={title} className="bg-slate-800 border border-slate-600 rounded-2xl overflow-hidden">
+            <div className="px-4 py-3 border-b border-slate-700">
+              <h3 className="text-white font-semibold text-sm">{title}</h3>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="text-slate-400 border-b border-slate-700">
+                    <th className="px-3 py-2 text-left">{keyLabel}</th>
+                    <th className="px-3 py-2 text-right">Χρέωση</th>
+                    <th className="px-3 py-2 text-right">Φορτ/κές</th>
+                    <th className="px-3 py-2 text-right w-10">Τμχ</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {tdata.map(([name, v]) => (
+                    <tr key={name} className="border-t border-slate-700/50 hover:bg-slate-700/30">
+                      <td className={`px-3 py-1.5 text-white font-medium truncate max-w-[130px] ${mono ? 'font-mono text-xs' : ''}`}>{name}</td>
+                      <td className="px-3 py-1.5 text-right font-mono text-white">{fmt(v.charge)}</td>
+                      <td className="px-3 py-1.5 text-right font-mono text-blue-300">{fmt(v.freight)}</td>
+                      <td className="px-3 py-1.5 text-right text-slate-400">{v.count}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
-        </div>
-
-        {/* Ανά φορτηγό */}
-        <div className="bg-slate-800 border border-slate-600 rounded-2xl overflow-hidden">
-          <div className="px-4 py-3 border-b border-slate-700">
-            <h3 className="text-white font-semibold text-sm">Ανά Φορτηγό</h3>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="text-slate-400 border-b border-slate-700">
-                  <th className="px-3 py-2 text-left">Πινακίδα</th>
-                  <th className="px-3 py-2 text-right">Χρέωση</th>
-                  <th className="px-3 py-2 text-right">Φορτ/κές</th>
-                  <th className="px-3 py-2 text-right w-10">Τμχ</th>
-                </tr>
-              </thead>
-              <tbody>
-                {byTruck.map(([name, v]) => (
-                  <tr key={name} className="border-t border-slate-700/50 hover:bg-slate-700/30">
-                    <td className="px-3 py-1.5 text-white font-mono text-xs">{name}</td>
-                    <td className="px-3 py-1.5 text-right font-mono text-white">{fmt(v.charge)}</td>
-                    <td className="px-3 py-1.5 text-right font-mono text-blue-300">{fmt(v.freight)}</td>
-                    <td className="px-3 py-1.5 text-right text-slate-400">{v.count}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
+        ))}
       </div>
 
-      {/* Ανά μήνα με bar chart */}
       {!statMonth && (
         <div className="bg-slate-800 border border-slate-600 rounded-2xl overflow-hidden">
           <div className="px-4 py-3 border-b border-slate-700">
@@ -236,13 +197,10 @@ function StatsTab({ rows }) {
           <div className="p-4 space-y-2">
             {byMonth.map(([sort, v]) => (
               <div key={sort} className="flex items-center gap-3">
-                <span className="text-slate-400 text-xs w-28 shrink-0">{(v.label || '').replace(/\s+\d{4}$/, m => ` ${m.trim().slice(-2)}`)}</span>
+                <span className="text-slate-400 text-xs w-28 shrink-0">{v.label}</span>
                 <div className="flex-1 flex items-center gap-2">
-                  <div className="flex-1 bg-slate-700 rounded-full h-4 relative overflow-hidden">
-                    <div
-                      className="h-full bg-blue-500 rounded-full"
-                      style={{ width: `${maxCharge ? (v.charge / maxCharge) * 100 : 0}%` }}
-                    />
+                  <div className="flex-1 bg-slate-700 rounded-full h-4 overflow-hidden">
+                    <div className="h-full bg-blue-500 rounded-full transition-all" style={{ width: `${maxCharge ? (v.charge / maxCharge) * 100 : 0}%` }} />
                   </div>
                   <span className="text-white font-mono text-xs w-24 text-right shrink-0">{fmt(v.charge)}</span>
                 </div>
@@ -256,31 +214,35 @@ function StatsTab({ rows }) {
   )
 }
 
-// ── Main component ────────────────────────────────────────────────
+// ── Main ──────────────────────────────────────────────────────────
 export default function Invoices() {
-  const [rows, setRows]                     = useState([])
-  const [loading, setLoading]               = useState(true)
-  const [selectedMonth, setSelectedMonth]   = useState('')
-  const [searchClient, setSearchClient]     = useState('')
-  const [searchTruck, setSearchTruck]       = useState('')
-  const [activeTab, setActiveTab]           = useState('list') // 'list' | 'stats'
-  const [docType, setDocType]               = useState('ΤΠΥ') // 'ΤΠΥ' | 'INV'
+  const [rows, setRows]           = useState([])
+  const [loading, setLoading]     = useState(true)
+  const [docType, setDocType]     = useState('ΤΠΥ')
+  const [activeTab, setActiveTab] = useState('list')
 
-  // Λίστες για autocomplete
+  // φίλτρα λίστας
+  const [selectedMonth, setSelectedMonth] = useState('')
+  const [searchClient, setSearchClient]   = useState('')
+  const [searchTruck, setSearchTruck]     = useState('')
+  const [searchDoc, setSearchDoc]         = useState('')
+
+  // autocomplete options
   const [clientOptions, setClientOptions] = useState([])
-  const [truckOptions,  setTruckOptions]  = useState([])
+  const [truckOptions, setTruckOptions]   = useState([])
 
-  // Import modal
+  // import
   const [importOpen, setImportOpen] = useState(false)
   const [importRows, setImportRows] = useState([])
   const [importing, setImporting]   = useState(false)
   const [importDone, setImportDone] = useState(null)
 
-  // Edit / Add modal
+  // modal
   const [editOpen, setEditOpen] = useState(false)
   const [editRow, setEditRow]   = useState(null)
   const [form, setForm]         = useState({})
   const [saving, setSaving]     = useState(false)
+  const firstFieldRef = useRef(null)
 
   async function loadAll() {
     setLoading(true)
@@ -297,32 +259,57 @@ export default function Invoices() {
 
   useEffect(() => { loadAll() }, [])
 
-  // Μοναδικοί μήνες για φίλτρο
+  // focus πρώτο πεδίο όταν ανοίγει modal
+  useEffect(() => {
+    if (editOpen) setTimeout(() => firstFieldRef.current?.focus(), 50)
+  }, [editOpen])
+
+  // keyboard shortcuts
+  useEffect(() => {
+    function onKey(e) {
+      if (!editOpen) return
+      if (e.key === 'Escape') setEditOpen(false)
+      if ((e.key === 'Enter') && (e.ctrlKey || e.metaKey)) handleSave(false)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [editOpen, form])
+
   const months = useMemo(() => {
     const seen = new Map()
-    rows.forEach(r => { if (r.month_sort) seen.set(r.month_sort, r.month) })
-    return Array.from(seen.entries()).sort((a, b) => b[0].localeCompare(a[0]))
-  }, [rows])
-
-  // Φιλτραρισμένες εγγραφές (ανά τύπο + φίλτρα)
-  const filtered = useMemo(() => {
-    return rows.filter(r => {
-      if ((r.type || 'ΤΠΥ') !== docType) return false
-      if (selectedMonth && r.month_sort !== selectedMonth) return false
-      if (searchClient && !(r.client || '').toLowerCase().includes(searchClient.toLowerCase())) return false
-      if (searchTruck && !(r.truck || '').toLowerCase().includes(searchTruck.toLowerCase())) return false
-      return true
+    rows.filter(r => (r.type || 'ΤΠΥ') === docType).forEach(r => {
+      if (r.month_sort) seen.set(r.month_sort, r.month)
     })
-  }, [rows, selectedMonth, searchClient, searchTruck, docType])
+    return Array.from(seen.entries()).sort((a, b) => b[0].localeCompare(a[0]))
+  }, [rows, docType])
 
-  // Σύνολα τρέχουσας προβολής
+  const filtered = useMemo(() => rows.filter(r => {
+    if ((r.type || 'ΤΠΥ') !== docType) return false
+    if (selectedMonth && r.month_sort !== selectedMonth) return false
+    if (searchClient && !(r.client || '').toLowerCase().includes(searchClient.toLowerCase())) return false
+    if (searchTruck  && !(r.truck  || '').toLowerCase().includes(searchTruck.toLowerCase()))  return false
+    if (searchDoc    && !String(r.doc_num || '').includes(searchDoc)) return false
+    return true
+  }), [rows, docType, selectedMonth, searchClient, searchTruck, searchDoc])
+
+  // ομαδοποίηση ανά μήνα
+  const grouped = useMemo(() => {
+    const map = new Map()
+    filtered.forEach(r => {
+      const k = r.month_sort || '—'
+      if (!map.has(k)) map.set(k, { label: r.month || k, rows: [] })
+      map.get(k).rows.push(r)
+    })
+    return Array.from(map.entries()).sort((a, b) => b[0].localeCompare(a[0]))
+  }, [filtered])
+
   const totals = useMemo(() => ({
     charge:  filtered.reduce((s, r) => s + (r.charge  || 0), 0),
     freight: filtered.reduce((s, r) => s + (r.freight || 0), 0),
     count:   filtered.length,
   }), [filtered])
 
-  // ── Import Excel ──────────────────────────────────────────────
+  // ── Import ────────────────────────────────────────────────────
   async function handleFileChange(e) {
     const file = e.target.files[0]
     if (!file) return
@@ -331,39 +318,40 @@ export default function Invoices() {
     const XLSX = await import('https://cdn.jsdelivr.net/npm/xlsx@0.18.5/xlsx.mjs')
     const buf  = await file.arrayBuffer()
     const wb   = XLSX.read(buf, { type: 'array' })
-    const ws   = wb.Sheets[wb.SheetNames[0]]
-    const data = XLSX.utils.sheet_to_json(ws, { header: 1 })
 
-    const sheetName  = wb.SheetNames[0]
-    const monthMatch = sheetName.match(/(Ιανουάριος|Φεβρουάριος|Μάρτιος|Απρίλιος|Μάιος|Ιούνιος|Ιούλιος|Αύγουστος|Σεπτέμβριος|Οκτώβριος|Νοέμβριος|Δεκέμβριος)\s+(\d{4})/i)
-    let month = sheetName, monthSort = ''
-    if (monthMatch) {
-      const mIdx = MONTHS_ORDER.findIndex(m => m.toLowerCase() === monthMatch[1].toLowerCase())
-      monthSort = `${monthMatch[2]}-${String(mIdx + 1).padStart(2, '0')}`
+    const allParsed = []
+    for (const sheetName of wb.SheetNames) {
+      const ws   = wb.Sheets[sheetName]
+      const data = XLSX.utils.sheet_to_json(ws, { header: 1 })
+
+      const monthMatch = sheetName.match(/(Ιανουάριος|Φεβρουάριος|Μάρτιος|Απρίλιος|Μάιος|Ιούνιος|Ιούλιος|Αύγουστος|Σεπτέμβριος|Οκτώβριος|Νοέμβριος|Δεκέμβριος)\s+(\d{4})/i)
+      let month = sheetName, monthSort = ''
+      if (monthMatch) {
+        const mIdx = MONTHS_ORDER.findIndex(m => m.toLowerCase() === monthMatch[1].toLowerCase())
+        monthSort = `${monthMatch[2]}-${String(mIdx + 1).padStart(2, '0')}`
+      }
+
+      const sheetUpper   = sheetName.toUpperCase()
+      const detectedType = sheetUpper.includes('INV') ? 'INV' : 'ΤΠΥ'
+
+      for (const row of data) {
+        if (!row[0] || typeof row[0] !== 'number') continue
+        const docNum = Math.round(row[0])
+        if (docNum <= 0) continue
+        allParsed.push({
+          doc_num:    docNum,
+          month,
+          month_sort: monthSort,
+          type:       detectedType,
+          client:     row[1] ? String(row[1]).trim() : null,
+          truck:      row[2] ? String(row[2]).trim() : null,
+          charge:     typeof row[3] === 'number' ? row[3] : null,
+          freight:    typeof row[4] === 'number' ? row[4] : null,
+          note:       row[5] ? String(row[5]).trim() : null,
+        })
+      }
     }
-
-    // Βρες τύπο από όνομα φύλλου
-    const sheetUpper = sheetName.toUpperCase()
-    const detectedType = sheetUpper.includes('INV') ? 'INV' : 'ΤΠΥ'
-
-    const parsed = []
-    for (const row of data) {
-      if (!row[0] || typeof row[0] !== 'number') continue
-      const docNum = Math.round(row[0])
-      if (docNum <= 0) continue
-      parsed.push({
-        doc_num:    docNum,
-        month,
-        month_sort: monthSort,
-        type:       detectedType,
-        client:     row[1] ? String(row[1]).trim() : null,
-        truck:      row[2] ? String(row[2]).trim() : null,
-        charge:     typeof row[3] === 'number' ? row[3] : null,
-        freight:    typeof row[4] === 'number' ? row[4] : null,
-        note:       row[5] ? String(row[5]).trim() : null,
-      })
-    }
-    setImportRows(parsed)
+    setImportRows(allParsed)
   }
 
   async function handleDeleteMonth() {
@@ -381,45 +369,45 @@ export default function Invoices() {
   async function handleImportConfirm() {
     if (!importRows.length) return
     setImporting(true)
-    const ms = importRows[0].month_sort
-    const { data: existing } = await supabase.from('invoices').select('doc_num').eq('month_sort', ms)
-    const existingSet = new Set((existing || []).map(r => r.doc_num))
+
+    // ομαδοποίηση ανά month_sort+type για dedup
+    const groups = {}
+    importRows.forEach(r => {
+      const k = `${r.month_sort}|${r.type}`
+      if (!groups[k]) groups[k] = []
+      groups[k].push(r)
+    })
+
     let inserted = 0, skipped = 0
-    for (const row of importRows) {
-      if (existingSet.has(row.doc_num)) { skipped++; continue }
-      const { error } = await supabase.from('invoices').insert([row])
-      if (error) skipped++
-      else { inserted++; existingSet.add(row.doc_num) }
+    for (const [key, grows] of Object.entries(groups)) {
+      const [ms, tp] = key.split('|')
+      const { data: existing } = await supabase.from('invoices').select('doc_num').eq('month_sort', ms).eq('type', tp)
+      const existingSet = new Set((existing || []).map(r => r.doc_num))
+      for (const row of grows) {
+        if (existingSet.has(row.doc_num)) { skipped++; continue }
+        const { error } = await supabase.from('invoices').insert([row])
+        if (error) skipped++
+        else { inserted++; existingSet.add(row.doc_num) }
+      }
     }
     setImporting(false)
     setImportDone({ inserted, skipped })
     loadAll()
   }
 
-  // ── Edit / Add ────────────────────────────────────────────────
+  // ── Modal ─────────────────────────────────────────────────────
   function openAdd() {
-    const maxDoc = rows.reduce((m, r) => Math.max(m, r.doc_num || 0), 0)
-    const nextDoc = maxDoc + 1
+    const typeRows = rows.filter(r => (r.type || 'ΤΠΥ') === docType)
+    const maxDoc   = typeRows.reduce((m, r) => Math.max(m, r.doc_num || 0), 0)
 
-    const now = new Date()
+    const now  = new Date()
     const mIdx = now.getMonth()
     const year = now.getFullYear()
     const monthSort  = `${year}-${String(mIdx + 1).padStart(2, '0')}`
     const monthLabel = `${MONTHS_ORDER[mIdx]} ${year}`
 
     setEditRow(null)
-    setForm({
-      doc_num:    nextDoc,
-      month:      monthLabel,
-      month_sort: monthSort,
-      type:       docType,
-      client:     '',
-      truck:      '',
-      charge:     '',
-      freight:    '',
-      note:       '',
-      order_num:  '',
-    })
+    setForm({ doc_num: maxDoc + 1, month: monthLabel, month_sort: monthSort, type: docType, client: '', truck: '', charge: '', freight: '', note: '', order_num: '' })
     setEditOpen(true)
   }
 
@@ -429,18 +417,18 @@ export default function Invoices() {
     setEditOpen(true)
   }
 
-  async function handleSave(andNew = false) {
+  const handleSave = useCallback(async (andNew = false) => {
     setSaving(true)
     const payload = {
-      doc_num:    parseInt(form.doc_num) || 0,
+      doc_num:    parseInt(form.doc_num)  || 0,
       month:      form.month,
       month_sort: form.month_sort,
       type:       form.type || 'ΤΠΥ',
-      client:     form.client || null,
-      truck:      form.truck || null,
-      charge:     form.charge !== '' && form.charge != null ? parseFloat(form.charge) : null,
+      client:     form.client  || null,
+      truck:      form.truck   || null,
+      charge:     form.charge  !== '' && form.charge  != null ? parseFloat(form.charge)  : null,
       freight:    form.freight !== '' && form.freight != null ? parseFloat(form.freight) : null,
-      note:       form.note || null,
+      note:       form.note    || null,
       order_num:  form.order_num ? parseInt(form.order_num) : null,
     }
     if (editRow) {
@@ -450,26 +438,17 @@ export default function Invoices() {
     }
     setSaving(false)
     if (andNew) {
-      // «Αποθήκευση & νέο» — ίδιος μήνας, επόμενος αριθμός, ίδια πινακίδα
-      const newRows = [...rows, payload]
-      const maxDoc = newRows.reduce((m, r) => Math.max(m, r.doc_num || 0), 0)
+      const typeRows = rows.filter(r => (r.type || 'ΤΠΥ') === docType)
+      const maxDoc   = Math.max(...typeRows.map(r => r.doc_num || 0), payload.doc_num)
       setEditRow(null)
-      setForm(f => ({
-        ...f,
-        doc_num:   maxDoc + 1,
-        client:    '',
-        charge:    '',
-        freight:   '',
-        note:      '',
-        order_num: '',
-        // truck μένει ίδια — χρήσιμο για γεμάτο φορτηγό με πολλούς πελάτες
-      }))
+      setForm(f => ({ ...f, doc_num: maxDoc + 1, client: '', charge: '', freight: '', note: '', order_num: '' }))
+      // truck & month μένουν — χρήσιμο για ίδιο φορτηγό ή ίδιο πελάτη
       loadAll()
     } else {
       setEditOpen(false)
       loadAll()
     }
-  }
+  }, [form, editRow, rows, docType])
 
   async function handleDelete(id) {
     if (!window.confirm('Διαγραφή εγγραφής;')) return
@@ -477,16 +456,13 @@ export default function Invoices() {
     loadAll()
   }
 
-  // Μήνας label από month_sort
-  function monthLabel(sort) {
-    if (!sort) return ''
-    const found = months.find(([s]) => s === sort)
-    return found ? found[1] : sort
-  }
+  const clearFilters = () => { setSelectedMonth(''); setSearchClient(''); setSearchTruck(''); setSearchDoc('') }
+  const hasFilters   = selectedMonth || searchClient || searchTruck || searchDoc
 
   // ─────────────────────────────────────────────────────────────
   return (
     <div className="p-4 max-w-6xl mx-auto space-y-4">
+
       {/* Header */}
       <div className="flex items-center justify-between">
         <h1 className="text-white text-2xl font-bold">📄 Παραστατικά</h1>
@@ -502,32 +478,28 @@ export default function Invoices() {
         </div>
       </div>
 
-      {/* ΤΠΥ / INV switcher */}
-      <div className="flex gap-1 bg-slate-800/60 rounded-xl p-1 w-fit">
-        {['ΤΠΥ', 'INV'].map(t => (
-          <button
-            key={t}
-            onClick={() => { setDocType(t); setSelectedMonth(''); setSearchClient(''); setSearchTruck('') }}
-            className={`px-5 py-2 rounded-lg text-sm font-bold transition-colors ${
-              docType === t ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'
-            }`}
-          >{t}</button>
-        ))}
+      {/* ΤΠΥ / INV + tabs σε μία γραμμή */}
+      <div className="flex items-center gap-3 flex-wrap">
+        <div className="flex gap-1 bg-slate-800 rounded-xl p-1">
+          {['ΤΠΥ', 'INV'].map(t => (
+            <button key={t}
+              onClick={() => { setDocType(t); clearFilters() }}
+              className={`px-5 py-1.5 rounded-lg text-sm font-bold transition-colors ${docType === t ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`}
+            >{t}</button>
+          ))}
+        </div>
+        <div className="w-px h-6 bg-slate-700" />
+        <div className="flex gap-1 bg-slate-800 rounded-xl p-1">
+          {[['list', '📋 Λίστα'], ['stats', '📊 Στατιστικά']].map(([id, label]) => (
+            <button key={id}
+              onClick={() => setActiveTab(id)}
+              className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${activeTab === id ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'}`}
+            >{label}</button>
+          ))}
+        </div>
       </div>
 
-      {/* Tabs Παραστατικά / Στατιστικά */}
-      <div className="flex gap-1 bg-slate-800/40 rounded-xl p-1 w-fit">
-        {[['list', '📋 Παραστατικά'], ['stats', '📊 Στατιστικά']].map(([id, label]) => (
-          <button
-            key={id}
-            onClick={() => setActiveTab(id)}
-            className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-              activeTab === id ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'
-            }`}
-          >{label}</button>
-        ))}
-      </div>
-
+      {/* ── Stats ── */}
       {activeTab === 'stats' ? (
         <StatsTab rows={rows.filter(r => (r.type || 'ΤΠΥ') === docType)} />
       ) : (
@@ -540,99 +512,116 @@ export default function Invoices() {
               className="bg-slate-700 border border-slate-600 text-white rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-blue-500"
             >
               <option value="">Όλοι οι μήνες</option>
-              {months.map(([sort, label]) => (
-                <option key={sort} value={sort}>{label}</option>
-              ))}
+              {months.map(([sort, label]) => <option key={sort} value={sort}>{label}</option>)}
             </select>
-            <input
-              type="text"
-              placeholder="🔍 Πελάτης..."
-              value={searchClient}
+            <input type="text" placeholder="🔍 Πελάτης" value={searchClient}
               onChange={e => setSearchClient(e.target.value)}
-              className="bg-slate-700 border border-slate-600 text-white rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-blue-500 w-44"
+              className="bg-slate-700 border border-slate-600 text-white rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-blue-500 w-40"
             />
-            <input
-              type="text"
-              placeholder="🔍 Πινακίδα..."
-              value={searchTruck}
+            <input type="text" placeholder="🔍 Πινακίδα" value={searchTruck}
               onChange={e => setSearchTruck(e.target.value)}
-              className="bg-slate-700 border border-slate-600 text-white rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-blue-500 w-36"
+              className="bg-slate-700 border border-slate-600 text-white rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-blue-500 w-32"
             />
-            {(selectedMonth || searchClient || searchTruck) && (
-              <button
-                onClick={() => { setSelectedMonth(''); setSearchClient(''); setSearchTruck('') }}
-                className="text-slate-400 hover:text-white text-sm px-2"
-              >✕ Καθαρισμός</button>
+            <input type="text" placeholder="🔍 Αρ." value={searchDoc}
+              onChange={e => setSearchDoc(e.target.value)}
+              className="bg-slate-700 border border-slate-600 text-white rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-blue-500 w-24 font-mono"
+            />
+            {hasFilters && (
+              <button onClick={clearFilters} className="text-slate-500 hover:text-white text-lg leading-none px-1" title="Καθαρισμός φίλτρων">⊗</button>
             )}
             <span className="text-slate-500 text-sm ml-auto">{totals.count} εγγραφές</span>
           </div>
 
-          {/* Πίνακας Excel-style */}
+          {/* Πίνακας ομαδοποιημένος ανά μήνα */}
           {loading ? (
             <p className="text-slate-400 text-center py-12">Φόρτωση...</p>
           ) : filtered.length === 0 ? (
             <p className="text-slate-500 text-center py-12">Δεν βρέθηκαν εγγραφές</p>
           ) : (
-            <div className="rounded-xl overflow-hidden border border-slate-600">
-              <table className="w-full text-sm border-collapse">
-                <thead>
-                  <tr className="bg-slate-700 text-slate-300 text-xs uppercase tracking-wide">
-                    <th className="px-3 py-2.5 text-left border-r border-slate-600 w-20">Αρ.</th>
-                    <th className="px-3 py-2.5 text-left border-r border-slate-600">Πελάτης</th>
-                    <th className="px-3 py-2.5 text-left border-r border-slate-600 w-28">Πινακίδα</th>
-                    <th className="px-3 py-2.5 text-right border-r border-slate-600 w-28">Χρέωση</th>
-                    <th className="px-3 py-2.5 text-right border-r border-slate-600 w-28">Φορτωτικές</th>
-                    <th className="px-3 py-2.5 text-left border-r border-slate-600 w-20">Παρ.</th>
-                    <th className="px-3 py-2.5 text-left border-r border-slate-600 w-32">Μήνας</th>
-                    <th className="px-3 py-2.5 text-left w-8"></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filtered.map((r, i) => (
-                    <tr
-                      key={r.id}
-                      onClick={() => openEdit(r)}
-                      className={`border-t border-slate-700 cursor-pointer transition-colors hover:bg-blue-900/20
-                        ${i % 2 === 0 ? 'bg-slate-800/40' : 'bg-slate-800/80'}`}
-                    >
-                      <td className="px-3 py-2 border-r border-slate-700 font-mono text-slate-300">{r.doc_num}</td>
-                      <td className="px-3 py-2 border-r border-slate-700 text-white font-medium">{r.client || '—'}</td>
-                      <td className="px-3 py-2 border-r border-slate-700 font-mono text-slate-300 text-xs">{r.truck || '—'}</td>
-                      <td className={`px-3 py-2 border-r border-slate-700 text-right font-mono ${r.charge < 0 ? 'text-red-400' : 'text-white'}`}>
-                        {fmt(r.charge)}
-                      </td>
-                      <td className="px-3 py-2 border-r border-slate-700 text-right font-mono text-blue-300">
-                        {fmt(r.freight)}
-                      </td>
-                      <td className="px-3 py-2 border-r border-slate-700 font-mono text-slate-400 text-xs">
-                        {r.order_num ? `#${r.order_num}` : '—'}
-                      </td>
-                      <td className="px-3 py-2 border-r border-slate-700 text-slate-400 text-xs">
-                        {(r.month || '').replace(' 2026', '')}
-                      </td>
-                      <td className="px-3 py-2 text-center">
-                        <button
-                          onClick={e => { e.stopPropagation(); handleDelete(r.id) }}
-                          className="text-slate-600 hover:text-red-400 text-xs transition-colors"
-                        >✕</button>
-                      </td>
-                    </tr>
-                  ))}
-                  {/* Γραμμή συνόλων */}
-                  <tr className="border-t-2 border-slate-500 bg-slate-700/60 font-semibold">
-                    <td className="px-3 py-2 border-r border-slate-600 text-slate-400 text-xs" colSpan={3}>
-                      Σύνολο ({totals.count})
-                    </td>
-                    <td className="px-3 py-2 border-r border-slate-600 text-right font-mono text-white">
-                      {fmt(totals.charge)}
-                    </td>
-                    <td className="px-3 py-2 border-r border-slate-600 text-right font-mono text-blue-300">
-                      {fmt(totals.freight)}
-                    </td>
-                    <td className="px-3 py-2 border-r border-slate-600" colSpan={3}></td>
-                  </tr>
-                </tbody>
-              </table>
+            <div className="space-y-3">
+              {grouped.map(([sort, group]) => {
+                const gCharge  = group.rows.reduce((s, r) => s + (r.charge  || 0), 0)
+                const gFreight = group.rows.reduce((s, r) => s + (r.freight || 0), 0)
+                const gDiff    = gCharge - gFreight
+                return (
+                  <div key={sort} className="rounded-xl overflow-hidden border border-slate-600">
+                    {/* Month header */}
+                    <div className="bg-slate-700/80 px-4 py-2 flex items-center justify-between">
+                      <span className="text-white font-semibold text-sm">{group.label}</span>
+                      <div className="flex gap-4 text-xs font-mono">
+                        <span className="text-slate-300">{fmt(gCharge)}</span>
+                        <span className="text-blue-300">{fmt(gFreight)}</span>
+                        <span className={gDiff >= 0 ? 'text-green-400' : 'text-red-400'}>{fmtSign(gDiff)}</span>
+                        <span className="text-slate-500">{group.rows.length} τμχ</span>
+                      </div>
+                    </div>
+                    <table className="w-full text-sm border-collapse">
+                      <thead>
+                        <tr className="bg-slate-800 text-slate-400 text-xs uppercase tracking-wide">
+                          <th className="px-3 py-2 text-left border-r border-slate-700 w-16">Αρ.</th>
+                          <th className="px-3 py-2 text-left border-r border-slate-700">Πελάτης</th>
+                          <th className="px-3 py-2 text-left border-r border-slate-700 w-24">Πινακίδα</th>
+                          <th className="px-3 py-2 text-right border-r border-slate-700 w-28">Χρέωση</th>
+                          <th className="px-3 py-2 text-right border-r border-slate-700 w-28">Φορτωτικές</th>
+                          <th className="px-3 py-2 text-right border-r border-slate-700 w-24">Διαφορά</th>
+                          {group.rows.some(r => r.order_num) && (
+                            <th className="px-3 py-2 text-left border-r border-slate-700 w-16">Παρ.</th>
+                          )}
+                          <th className="px-3 py-2 w-8"></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {group.rows.map((r, i) => {
+                          const diff = (r.charge || 0) - (r.freight || 0)
+                          const isLoss = r.charge != null && r.freight != null && diff < 0
+                          return (
+                            <tr
+                              key={r.id}
+                              onClick={() => openEdit(r)}
+                              className={`border-t border-slate-700/60 cursor-pointer transition-colors hover:bg-blue-900/20
+                                ${isLoss ? 'bg-red-900/10' : i % 2 === 0 ? 'bg-slate-800/30' : 'bg-slate-800/70'}`}
+                            >
+                              <td className="px-3 py-2 border-r border-slate-700/50 font-mono text-slate-300 text-xs">{r.doc_num}</td>
+                              <td className="px-3 py-2 border-r border-slate-700/50 text-white font-medium">{r.client || '—'}</td>
+                              <td className="px-3 py-2 border-r border-slate-700/50 font-mono text-slate-300 text-xs">{r.truck || '—'}</td>
+                              <td className="px-3 py-2 border-r border-slate-700/50 text-right font-mono text-white">{fmt(r.charge)}</td>
+                              <td className="px-3 py-2 border-r border-slate-700/50 text-right font-mono text-blue-300">{fmt(r.freight)}</td>
+                              <td className={`px-3 py-2 border-r border-slate-700/50 text-right font-mono text-xs ${diff < 0 ? 'text-red-400' : 'text-green-400'}`}>
+                                {r.charge != null && r.freight != null ? fmtSign(diff) : '—'}
+                              </td>
+                              {group.rows.some(rr => rr.order_num) && (
+                                <td className="px-3 py-2 border-r border-slate-700/50 font-mono text-slate-400 text-xs">
+                                  {r.order_num ? `#${r.order_num}` : ''}
+                                </td>
+                              )}
+                              <td className="px-3 py-2 text-center">
+                                <button
+                                  onClick={e => { e.stopPropagation(); handleDelete(r.id) }}
+                                  className="text-slate-600 hover:text-red-400 text-xs transition-colors"
+                                >✕</button>
+                              </td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )
+              })}
+
+              {/* Grand total */}
+              {grouped.length > 1 && (
+                <div className="bg-slate-700/40 border border-slate-600 rounded-xl px-4 py-2.5 flex items-center justify-between">
+                  <span className="text-slate-300 text-sm font-semibold">Σύνολο ({totals.count})</span>
+                  <div className="flex gap-4 text-sm font-mono">
+                    <span className="text-white">{fmt(totals.charge)}</span>
+                    <span className="text-blue-300">{fmt(totals.freight)}</span>
+                    <span className={totals.charge - totals.freight >= 0 ? 'text-green-400' : 'text-red-400'}>
+                      {fmtSign(totals.charge - totals.freight)}
+                    </span>
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </>
@@ -646,24 +635,28 @@ export default function Invoices() {
               <h2 className="text-white text-lg font-bold">📥 Import Excel</h2>
               <button onClick={() => setImportOpen(false)} className="text-slate-400 hover:text-white text-xl">✕</button>
             </div>
-            <input
-              type="file"
-              accept=".xlsx,.xls"
-              onChange={handleFileChange}
+            <p className="text-slate-400 text-xs">Διαβάζει όλα τα φύλλα — φύλλο με "INV" → τύπος INV, υπόλοιπα → ΤΠΥ</p>
+            <input type="file" accept=".xlsx,.xls" onChange={handleFileChange}
               className="w-full text-slate-300 text-sm file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:bg-slate-600 file:text-white file:text-sm hover:file:bg-slate-500"
             />
             {importRows.length > 0 && !importDone && (
-              <div className="bg-slate-700/50 rounded-xl p-3">
-                <p className="text-white text-sm font-semibold">{importRows[0].month}</p>
-                <p className="text-slate-300 text-sm mt-1">{importRows.length} εγγραφές έτοιμες</p>
-                <div className="mt-2 max-h-40 overflow-y-auto space-y-1">
-                  {importRows.slice(0, 5).map((r, i) => (
-                    <p key={i} className="text-slate-400 text-xs font-mono">
-                      #{r.doc_num} {r.client} {r.truck} {r.charge}€
-                    </p>
-                  ))}
-                  {importRows.length > 5 && <p className="text-slate-500 text-xs">... και {importRows.length - 5} ακόμα</p>}
-                </div>
+              <div className="bg-slate-700/50 rounded-xl p-3 space-y-2">
+                {/* ομαδοποίηση preview ανά τύπο */}
+                {['ΤΠΥ', 'INV'].map(t => {
+                  const trows = importRows.filter(r => r.type === t)
+                  if (!trows.length) return null
+                  return (
+                    <div key={t}>
+                      <p className="text-white text-sm font-semibold">{t} — {trows[0].month} <span className="text-slate-400 font-normal">({trows.length} εγγραφές)</span></p>
+                      <div className="mt-1 space-y-0.5">
+                        {trows.slice(0, 3).map((r, i) => (
+                          <p key={i} className="text-slate-400 text-xs font-mono">#{r.doc_num} {r.client} {r.truck}</p>
+                        ))}
+                        {trows.length > 3 && <p className="text-slate-500 text-xs">...και {trows.length - 3} ακόμα</p>}
+                      </div>
+                    </div>
+                  )
+                })}
               </div>
             )}
             {importDone && (
@@ -675,9 +668,7 @@ export default function Invoices() {
             <div className="flex justify-between items-center pt-2">
               <div>
                 {!importDone && (
-                  <button
-                    onClick={handleDeleteMonth}
-                    disabled={importing || importRows.length === 0}
+                  <button onClick={handleDeleteMonth} disabled={importing || importRows.length === 0}
                     className="bg-red-900/60 hover:bg-red-800 disabled:opacity-50 text-red-300 px-4 py-2 rounded-xl text-sm transition-colors"
                   >🗑️ Εκκαθάριση μηνός</button>
                 )}
@@ -685,9 +676,7 @@ export default function Invoices() {
               <div className="flex gap-2">
                 <button onClick={() => setImportOpen(false)} className="text-slate-400 hover:text-white px-4 py-2 rounded-xl text-sm">Κλείσιμο</button>
                 {!importDone && (
-                  <button
-                    onClick={handleImportConfirm}
-                    disabled={importing || importRows.length === 0}
+                  <button onClick={handleImportConfirm} disabled={importing || importRows.length === 0}
                     className="bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white px-4 py-2 rounded-xl text-sm font-semibold transition-colors"
                   >{importing ? 'Εισαγωγή...' : `💾 Εισαγωγή ${importRows.length} εγγραφών`}</button>
                 )}
@@ -708,40 +697,30 @@ export default function Invoices() {
               <button onClick={() => setEditOpen(false)} className="text-slate-400 hover:text-white text-xl">✕</button>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
-              {/* Τύπος */}
-              <div>
-                <label className="block text-slate-400 text-xs mb-1">Τύπος</label>
-                <div className="flex gap-1">
-                  {['ΤΠΥ', 'INV'].map(t => (
-                    <button
-                      key={t}
-                      type="button"
-                      onClick={() => setForm(f => ({ ...f, type: t }))}
-                      className={`flex-1 py-2 rounded-xl text-sm font-bold transition-colors ${
-                        (form.type || 'ΤΠΥ') === t ? 'bg-indigo-600 text-white' : 'bg-slate-700 text-slate-400 hover:text-white'
-                      }`}
-                    >{t}</button>
-                  ))}
-                </div>
-              </div>
+            {/* Τύπος — εμφανής επιλογή */}
+            <div className="flex gap-2">
+              {['ΤΠΥ', 'INV'].map(t => (
+                <button key={t} type="button"
+                  onClick={() => {
+                    const maxDoc = rows.filter(r => (r.type || 'ΤΠΥ') === t).reduce((m, r) => Math.max(m, r.doc_num || 0), 0)
+                    setForm(f => ({ ...f, type: t, doc_num: f._manualDoc ? f.doc_num : maxDoc + 1 }))
+                  }}
+                  className={`flex-1 py-2.5 rounded-xl text-sm font-bold transition-colors ${(form.type || 'ΤΠΥ') === t ? 'bg-indigo-600 text-white' : 'bg-slate-700 text-slate-400 hover:text-white'}`}
+                >{t}</button>
+              ))}
+            </div>
 
-              {/* Αρ. Παραστατικού */}
+            <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="block text-slate-400 text-xs mb-1">Αρ. Παραστατικού</label>
-                <input
-                  type="number"
-                  value={form.doc_num || ''}
-                  onChange={e => setForm(f => ({ ...f, doc_num: e.target.value }))}
+                <input type="number" value={form.doc_num || ''} ref={firstFieldRef}
+                  onChange={e => setForm(f => ({ ...f, doc_num: e.target.value, _manualDoc: true }))}
                   className="w-full bg-slate-700 border border-slate-600 text-white rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-blue-500 font-mono"
                 />
               </div>
-
-              {/* Μήνας */}
               <div>
                 <label className="block text-slate-400 text-xs mb-1">Μήνας</label>
-                <select
-                  value={form.month_sort || ''}
+                <select value={form.month_sort || ''}
                   onChange={e => {
                     const found = months.find(([s]) => s === e.target.value)
                     setForm(f => ({ ...f, month_sort: e.target.value, month: found ? found[1] : e.target.value }))
@@ -752,91 +731,77 @@ export default function Invoices() {
                 </select>
               </div>
 
-              {/* Πελάτης με autocomplete */}
               <div className="col-span-2">
                 <label className="block text-slate-400 text-xs mb-1">Πελάτης</label>
-                <Autocomplete
-                  value={form.client || ''}
-                  onChange={v => setForm(f => ({ ...f, client: v }))}
-                  options={clientOptions}
-                  placeholder="Αναζήτηση πελάτη..."
+                <Autocomplete value={form.client || ''} onChange={v => setForm(f => ({ ...f, client: v }))}
+                  options={clientOptions} placeholder="Αναζήτηση πελάτη..."
                   className="w-full bg-slate-700 border border-slate-600 text-white rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-blue-500"
                 />
               </div>
 
-              {/* Πινακίδα με autocomplete */}
               <div className="col-span-2">
-                <label className="block text-slate-400 text-xs mb-1">Πινακίδα</label>
-                <Autocomplete
-                  value={form.truck || ''}
-                  onChange={v => setForm(f => ({ ...f, truck: v }))}
-                  options={truckOptions}
-                  placeholder="Αναζήτηση πινακίδας..."
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-slate-400 text-xs">Πινακίδα</label>
+                  {form.truck && !editRow && (
+                    <span className="text-indigo-400 text-xs">✓ μένει για το επόμενο</span>
+                  )}
+                </div>
+                <Autocomplete value={form.truck || ''} onChange={v => setForm(f => ({ ...f, truck: v }))}
+                  options={truckOptions} placeholder="Αναζήτηση πινακίδας..."
                   className="w-full bg-slate-700 border border-slate-600 text-white rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-blue-500 font-mono"
                 />
               </div>
 
-              {/* Χρέωση */}
               <div>
                 <label className="block text-slate-400 text-xs mb-1">Χρέωση (€)</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  value={form.charge ?? ''}
+                <input type="number" step="0.01" value={form.charge ?? ''}
                   onChange={e => setForm(f => ({ ...f, charge: e.target.value }))}
                   className="w-full bg-slate-700 border border-slate-600 text-white rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-blue-500 font-mono"
                 />
               </div>
-
-              {/* Φορτωτικές */}
               <div>
                 <label className="block text-slate-400 text-xs mb-1">Φορτωτικές (€)</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  value={form.freight ?? ''}
+                <input type="number" step="0.01" value={form.freight ?? ''}
                   onChange={e => setForm(f => ({ ...f, freight: e.target.value }))}
                   className="w-full bg-slate-700 border border-slate-600 text-white rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-blue-500 font-mono"
                 />
               </div>
 
-              {/* Αρ. Παραγγελίας */}
               <div>
                 <label className="block text-slate-400 text-xs mb-1">Αρ. Παραγγελίας</label>
-                <input
-                  type="number"
-                  value={form.order_num || ''}
+                <input type="number" value={form.order_num || ''}
                   onChange={e => setForm(f => ({ ...f, order_num: e.target.value }))}
                   className="w-full bg-slate-700 border border-slate-600 text-white rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-blue-500 font-mono"
                   placeholder="π.χ. 42"
                 />
               </div>
-
-              {/* Σημείωση */}
-              <div className="col-span-2">
+              <div>
                 <label className="block text-slate-400 text-xs mb-1">Σημείωση</label>
-                <input
-                  type="text"
-                  value={form.note || ''}
+                <input type="text" value={form.note || ''}
                   onChange={e => setForm(f => ({ ...f, note: e.target.value }))}
                   className="w-full bg-slate-700 border border-slate-600 text-white rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-blue-500"
                 />
               </div>
             </div>
 
-            <div className="flex justify-between items-center pt-2">
+            {/* Preview διαφοράς */}
+            {form.charge !== '' && form.freight !== '' && form.charge != null && form.freight != null && (
+              <div className={`rounded-xl px-4 py-2 text-sm font-mono text-center ${parseFloat(form.charge) - parseFloat(form.freight) >= 0 ? 'bg-green-900/20 text-green-400' : 'bg-red-900/20 text-red-400'}`}>
+                Διαφορά: {fmtSign(parseFloat(form.charge) - parseFloat(form.freight))} €
+              </div>
+            )}
+
+            <p className="text-slate-600 text-xs text-right">Ctrl+Enter αποθήκευση · Esc κλείσιμο</p>
+
+            <div className="flex justify-between items-center pt-1">
               <button onClick={() => setEditOpen(false)} className="text-slate-400 hover:text-white px-4 py-2 rounded-xl text-sm">Άκυρο</button>
               <div className="flex gap-2">
                 {!editRow && (
-                  <button
-                    onClick={() => handleSave(true)}
-                    disabled={saving}
+                  <button onClick={() => handleSave(true)} disabled={saving}
                     className="bg-slate-600 hover:bg-slate-500 disabled:opacity-50 text-white px-4 py-2 rounded-xl text-sm transition-colors"
                   >💾 + Νέο</button>
                 )}
-                <button
-                  onClick={() => handleSave(false)}
-                  disabled={saving}
+                <button onClick={() => handleSave(false)} disabled={saving}
                   className="bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white px-4 py-2 rounded-xl text-sm font-semibold transition-colors"
                 >{saving ? 'Αποθήκευση...' : '💾 Αποθήκευση'}</button>
               </div>
